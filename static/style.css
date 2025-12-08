@@ -854,3 +854,79 @@ a:hover {
         flex-direction: column;
     }
 }
+
+/* Processing Banner */
+.processing-banner {
+    background: linear-gradient(135deg, #4a90d9 0%, #357abd 100%);
+    color: white;
+    padding: 1rem 1.5rem;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 2px 8px rgba(74, 144, 217, 0.3);
+}
+
+.processing-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.spinner {
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(255,255,255,0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Quick Actions Bar */
+.quick-actions-bar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding: 1rem 1.5rem;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    flex-wrap: wrap;
+}
+
+.status-text {
+    color: #666;
+    font-size: 0.9rem;
+    margin-left: auto;
+}
+
+/* Button States */
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-success {
+    background: #28a745;
+    color: white;
+}
+
+.btn-success:hover {
+    background: #218838;
+}
+
+/* Stat Card Colors */
+.stat-card.stat-processed .stat-value {
+    color: #28a745;
+}
+
+.stat-card.stat-pending .stat-value {
+    color: #ffc107;
+}
+
+.stat-card.stat-error .stat-value {
+    color: #dc3545;
+}

@@ -6,32 +6,48 @@
 <div class="dashboard">
     <h1>Dashboard</h1>
 
+    <!-- Processing Status Banner -->
+    <div id="processing-banner" class="processing-banner" style="display: none;">
+        <div class="processing-info">
+            <span class="spinner"></span>
+            <span id="processing-text">Processing...</span>
+        </div>
+    </div>
+
     <!-- Statistics Cards -->
     <div class="stats-grid">
         <div class="stat-card">
             <div class="stat-value">{{ stats.total_documents }}</div>
-            <div class="stat-label">Total Documents</div>
+            <div class="stat-label">Total Files</div>
         </div>
-        <div class="stat-card">
-            <div class="stat-value">{{ stats.total_transcriptions }}</div>
-            <div class="stat-label">Transcriptions</div>
-        </div>
-        <div class="stat-card">
+        <div class="stat-card stat-processed">
             <div class="stat-value">{{ stats.processed_documents }}</div>
             <div class="stat-label">Processed</div>
         </div>
+        <div class="stat-card stat-pending">
+            <div class="stat-value" id="pending-count">{{ stats.pending_documents }}</div>
+            <div class="stat-label">In Queue</div>
+        </div>
+        <div class="stat-card stat-error">
+            <div class="stat-value">{{ stats.error_documents }}</div>
+            <div class="stat-label">Errors</div>
+        </div>
         <div class="stat-card">
             <div class="stat-value">{{ stats.total_facts }}</div>
-            <div class="stat-label">Facts Extracted</div>
+            <div class="stat-label">Facts</div>
         </div>
         <div class="stat-card">
             <div class="stat-value">{{ stats.total_faq }}</div>
-            <div class="stat-label">FAQ Entries</div>
+            <div class="stat-label">FAQ</div>
         </div>
-        <div class="stat-card">
-            <div class="stat-value">{{ stats.today_documents }}</div>
-            <div class="stat-label">Today</div>
-        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="quick-actions-bar">
+        <a href="{{ url_for('upload') }}" class="btn btn-primary">Upload Document</a>
+        <button onclick="triggerScan()" class="btn btn-secondary" id="scan-btn">Scan for New Files</button>
+        <button onclick="processAll()" class="btn btn-success" id="process-btn">Process All Pending</button>
+        <span id="status-text" class="status-text"></span>
     </div>
 
     <div class="dashboard-grid">
@@ -115,31 +131,90 @@
             </div>
         </div>
     </div>
-
-    <!-- Quick Actions -->
-    <div class="quick-actions">
-        <h2>Quick Actions</h2>
-        <div class="action-buttons">
-            <a href="{{ url_for('upload') }}" class="btn btn-primary">Upload Document</a>
-            <button onclick="triggerScan()" class="btn btn-secondary">Scan for New Files</button>
-        </div>
-    </div>
 </div>
 
 {% endblock %}
 
 {% block scripts %}
 <script>
+let isProcessing = false;
+
+function updateStatus(message) {
+    document.getElementById('status-text').textContent = message;
+}
+
+function setButtonsDisabled(disabled) {
+    document.getElementById('scan-btn').disabled = disabled;
+    document.getElementById('process-btn').disabled = disabled;
+}
+
+function showProcessingBanner(show, text) {
+    const banner = document.getElementById('processing-banner');
+    const textEl = document.getElementById('processing-text');
+    banner.style.display = show ? 'block' : 'none';
+    if (text) textEl.textContent = text;
+}
+
 function triggerScan() {
+    setButtonsDisabled(true);
+    updateStatus('Scanning for new files...');
+
     fetch('/api/scan', { method: 'POST' })
         .then(r => r.json())
         .then(data => {
-            alert('Scan complete. Found ' + data.new_files + ' new files.');
-            if (data.new_files > 0) {
-                location.reload();
+            if (data.error) {
+                updateStatus('Error: ' + data.error);
+            } else {
+                updateStatus('Found ' + data.new_files + ' new files. ' + data.pending + ' pending.');
+                document.getElementById('pending-count').textContent = data.pending;
+            }
+            setButtonsDisabled(false);
+        })
+        .catch(err => {
+            updateStatus('Scan failed: ' + err);
+            setButtonsDisabled(false);
+        });
+}
+
+function processAll() {
+    if (isProcessing) {
+        updateStatus('Processing already in progress...');
+        return;
+    }
+
+    isProcessing = true;
+    setButtonsDisabled(true);
+    showProcessingBanner(true, 'Processing documents...');
+    updateStatus('Processing all pending documents...');
+
+    fetch('/api/process-all', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            isProcessing = false;
+            showProcessingBanner(false);
+            setButtonsDisabled(false);
+
+            if (data.error) {
+                updateStatus('Error: ' + data.error);
+            } else if (data.message) {
+                updateStatus(data.message);
+            } else {
+                updateStatus('Processed ' + data.processed + ' documents, ' + data.errors + ' errors.');
+                // Reload to show updated stats
+                setTimeout(() => location.reload(), 1000);
             }
         })
-        .catch(err => alert('Scan failed: ' + err));
+        .catch(err => {
+            isProcessing = false;
+            showProcessingBanner(false);
+            setButtonsDisabled(false);
+            updateStatus('Processing failed: ' + err);
+        });
 }
+
+// Check initial status
+{% if processing_status.is_processing %}
+showProcessingBanner(true, 'Background processing in progress...');
+{% endif %}
 </script>
 {% endblock %}

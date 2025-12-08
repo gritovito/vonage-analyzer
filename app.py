@@ -4,6 +4,7 @@ Self-learning Help Desk system for analyzing call transcriptions
 """
 import os
 import json
+import logging
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
 from werkzeug.utils import secure_filename
@@ -13,11 +14,18 @@ import atexit
 from config import (
     FLASK_HOST, FLASK_PORT, DEBUG,
     UPLOAD_FOLDER, DOC_TYPES, FACT_CATEGORIES,
-    WATCH_INTERVAL_SECONDS
+    WATCH_INTERVAL_SECONDS, DATA_DIR
 )
 import database as db
 import analyzer
 import watcher
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -25,27 +33,61 @@ app.secret_key = 'call-analyzer-secret-key-2024'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
 
-# Ensure upload folder exists
+# Ensure directories exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(DATA_DIR, exist_ok=True)
 
 # Allowed file extensions
 ALLOWED_EXTENSIONS = {'txt', 'json', 'md', 'pdf', 'doc', 'docx'}
+
+# Processing status for progress tracking
+processing_status = {
+    'is_processing': False,
+    'current': 0,
+    'total': 0,
+    'current_file': '',
+    'last_run': None
+}
 
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
+def run_background_processing():
+    """Background job to scan and process files"""
+    global processing_status
+
+    if processing_status['is_processing']:
+        logger.info("Processing already in progress, skipping scheduled run")
+        return
+
+    processing_status['is_processing'] = True
+    processing_status['last_run'] = datetime.now().isoformat()
+
+    try:
+        watcher.process_new_transcriptions()
+    except Exception as e:
+        logger.error(f"Error in background processing: {e}")
+    finally:
+        processing_status['is_processing'] = False
+        processing_status['current'] = 0
+        processing_status['total'] = 0
+        processing_status['current_file'] = ''
+
+
 # Initialize scheduler for background tasks
 scheduler = BackgroundScheduler()
 scheduler.add_job(
-    func=watcher.process_new_transcriptions,
+    func=run_background_processing,
     trigger="interval",
     seconds=WATCH_INTERVAL_SECONDS,
     id='transcription_watcher',
-    name='Watch for new transcriptions'
+    name='Watch for new transcriptions',
+    max_instances=1
 )
 scheduler.start()
+logger.info(f"Scheduler started - running every {WATCH_INTERVAL_SECONDS} seconds")
 
 # Shut down scheduler when app exits
 atexit.register(lambda: scheduler.shutdown())
@@ -89,7 +131,8 @@ def index():
                            facts_by_category=facts_by_category,
                            top_faq=top_faq,
                            summary=summary,
-                           doc_types=DOC_TYPES)
+                           doc_types=DOC_TYPES,
+                           processing_status=processing_status)
 
 
 @app.route('/documents')
@@ -157,8 +200,12 @@ def upload():
             try:
                 content = file.read().decode('utf-8')
             except UnicodeDecodeError:
-                flash('Could not read file. Please upload a text file.', 'error')
-                return redirect(request.url)
+                try:
+                    file.seek(0)
+                    content = file.read().decode('cp1251')
+                except:
+                    flash('Could not read file. Please upload a text file.', 'error')
+                    return redirect(request.url)
 
             # Save to database
             doc_id = db.add_document(
@@ -267,7 +314,9 @@ def analytics():
 @app.route('/api/stats')
 def api_stats():
     """Get current statistics"""
-    return jsonify(db.get_total_stats())
+    stats = db.get_total_stats()
+    stats['processing'] = processing_status
+    return jsonify(stats)
 
 
 @app.route('/api/process/<int:doc_id>', methods=['POST'])
@@ -284,8 +333,56 @@ def api_process_document(doc_id):
 @app.route('/api/scan', methods=['POST'])
 def api_scan():
     """Manually trigger folder scan"""
-    new_count = watcher.process_new_transcriptions()
-    return jsonify({'new_files': new_count})
+    global processing_status
+
+    if processing_status['is_processing']:
+        return jsonify({'error': 'Processing already in progress', 'status': processing_status})
+
+    # Run scan in current thread (blocking but gives immediate feedback)
+    new_count = watcher.scan_for_new_files()
+
+    return jsonify({
+        'new_files': new_count,
+        'pending': db.get_documents_count(status='pending')
+    })
+
+
+@app.route('/api/process-all', methods=['POST'])
+def api_process_all():
+    """Manually trigger processing of all pending documents"""
+    global processing_status
+
+    if processing_status['is_processing']:
+        return jsonify({'error': 'Processing already in progress', 'status': processing_status})
+
+    # First scan for new files
+    new_count = watcher.scan_for_new_files()
+
+    # Then process pending
+    pending_count = db.get_documents_count(status='pending')
+
+    if pending_count == 0:
+        return jsonify({
+            'message': 'No pending documents to process',
+            'new_files': new_count,
+            'pending': 0
+        })
+
+    processing_status['is_processing'] = True
+    processing_status['total'] = pending_count
+
+    try:
+        processed, errors, total = analyzer.process_pending_documents()
+        return jsonify({
+            'processed': processed,
+            'errors': errors,
+            'total': total,
+            'new_files': new_count
+        })
+    finally:
+        processing_status['is_processing'] = False
+        processing_status['current'] = 0
+        processing_status['total'] = 0
 
 
 @app.route('/api/search')
@@ -329,8 +426,8 @@ def server_error(e):
 
 
 # Run initial scan on startup
-with app.app_context():
-    watcher.run_initial_scan()
+logger.info("Starting Call Analyzer...")
+watcher.run_initial_scan()
 
 
 if __name__ == '__main__':

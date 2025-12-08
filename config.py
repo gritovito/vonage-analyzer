@@ -3,17 +3,22 @@ Configuration settings for Call Analyzer
 """
 import os
 
+# Load .env file if exists
+from dotenv import load_dotenv
+load_dotenv()
+
 # OpenAI API - set via environment variable or .env file
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL = "gpt-4o-mini"
 
 # Paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATABASE_PATH = os.path.join(BASE_DIR, "knowledge.db")
+DATA_DIR = os.path.join(BASE_DIR, "data")
+DATABASE_PATH = os.path.join(DATA_DIR, "knowledge.db")
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 
 # Transcription source folder (on server)
-TRANSCRIPTION_FOLDER = "/var/www/whisper/completed"
+TRANSCRIPTION_FOLDER = "/var/www/whisper/outputs"
 
 # Flask settings
 FLASK_HOST = "0.0.0.0"
@@ -39,38 +44,32 @@ FACT_CATEGORIES = [
     "problem",
     "solution",
     "agreement",
-    "product"
+    "sentiment"
 ]
 
 # Analysis prompt for OpenAI
 ANALYSIS_PROMPT = """Проанализируй транскрипцию телефонного разговора службы поддержки.
 
-Извлеки и структурируй следующую информацию:
+Извлеки:
+1. КОНТАКТЫ: имена, телефоны, email, адреса (кто звонил, кому)
+2. ВОПРОС КЛИЕНТА: главный вопрос или проблема
+3. РЕШЕНИЕ: как оператор решил или предложил решить
+4. ДОГОВОРЁННОСТИ: что обещали, сроки
+5. ИТОГ: доволен ли клиент (positive/neutral/negative)
 
-1. КОНТАКТЫ: имена, телефоны, email, адреса упомянутые в разговоре
-2. ВОПРОСЫ: что спрашивал клиент (дословно или суть)
-3. ОТВЕТЫ: что отвечал оператор на каждый вопрос
-4. ПРОБЛЕМЫ: с чем столкнулся клиент
-5. РЕШЕНИЯ: как решили или предложили решить проблему
-6. ДОГОВОРЁННОСТИ: что обещали, сроки, следующие шаги
-7. ПРОДУКТЫ/УСЛУГИ: что обсуждали, заказывали
-8. НАСТРОЕНИЕ: доволен ли клиент (positive/neutral/negative)
-
-Верни результат ТОЛЬКО в формате JSON (без markdown, без ```):
+Ответ ТОЛЬКО JSON без markdown:
 {
-  "contacts": [{"type": "phone/email/name/address", "value": "...", "person": "client/operator"}],
-  "questions": [{"text": "текст вопроса", "topic": "тема"}],
-  "answers": [{"question": "вопрос", "answer": "ответ оператора"}],
-  "problems": [{"description": "описание проблемы", "severity": "low/medium/high"}],
-  "solutions": [{"problem": "проблема", "solution": "предложенное решение"}],
-  "agreements": [{"what": "что договорились", "when": "когда/срок", "who": "кто ответственный"}],
-  "products": [{"name": "название", "action": "discussed/ordered/returned/etc"}],
+  "contacts": [{"type": "имя/телефон/email", "value": "...", "role": "клиент/оператор"}],
+  "question": "главный вопрос клиента",
+  "answer": "ответ/решение оператора",
+  "problem": "описание проблемы если есть",
+  "solution": "как решили",
+  "agreements": "что договорились",
   "sentiment": "positive/neutral/negative",
-  "summary": "краткое резюме разговора в 2-3 предложения на русском"
+  "summary": "краткое резюме в 1-2 предложения"
 }
 
-Если какая-то категория пустая, верни пустой массив [].
-Извлекай только то, что явно упомянуто в разговоре.
+Если данных нет - используй пустую строку "" или пустой массив [].
 
 ТРАНСКРИПЦИЯ:
 """

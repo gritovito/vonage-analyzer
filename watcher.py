@@ -10,7 +10,10 @@ import database as db
 import analyzer
 
 # Setup logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 
@@ -31,6 +34,7 @@ def get_transcription_files():
         for filepath in folder.glob(ext):
             files.append((filepath.name, str(filepath)))
 
+    logger.info(f"Found {len(files)} files in {TRANSCRIPTION_FOLDER}")
     return files
 
 
@@ -52,12 +56,20 @@ def scan_for_new_files():
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
                 content = f.read()
+        except UnicodeDecodeError:
+            # Try with different encoding
+            try:
+                with open(filepath, 'r', encoding='cp1251') as f:
+                    content = f.read()
+            except Exception as e:
+                logger.error(f"Error reading file {filepath}: {e}")
+                continue
         except Exception as e:
             logger.error(f"Error reading file {filepath}: {e}")
             continue
 
         # Skip empty files
-        if not content.strip():
+        if not content or not content.strip():
             logger.warning(f"Skipping empty file: {filename}")
             continue
 
@@ -79,18 +91,27 @@ def scan_for_new_files():
 def process_new_transcriptions():
     """
     Main function to scan and process new transcriptions
-    Called by scheduler
+    Called by scheduler every 5 minutes
     """
-    logger.info("Starting transcription scan...")
+    logger.info("=" * 50)
+    logger.info("Starting scheduled transcription scan...")
 
     # Scan for new files
     new_count = scan_for_new_files()
     logger.info(f"Found {new_count} new transcriptions")
 
-    # Process pending documents
-    if new_count > 0:
-        processed, errors = analyzer.process_pending_documents()
-        logger.info(f"Processed {processed} documents, {errors} errors")
+    # Get pending count before processing
+    pending_count = db.get_documents_count(status='pending')
+
+    if pending_count > 0:
+        logger.info(f"Processing {pending_count} pending documents...")
+        processed, errors, total = analyzer.process_pending_documents()
+        logger.info(f"Batch complete: {processed} processed, {errors} errors")
+    else:
+        logger.info("No pending documents to process")
+
+    logger.info("Scheduled scan complete")
+    logger.info("=" * 50)
 
     return new_count
 
@@ -100,18 +121,22 @@ def run_initial_scan():
     Run initial scan on startup
     Process any existing unprocessed files
     """
+    logger.info("=" * 50)
     logger.info("Running initial transcription scan...")
 
     # Scan for new files first
     new_count = scan_for_new_files()
+    logger.info(f"Initial scan found {new_count} new files")
 
     # Get count of pending documents
     pending_count = db.get_documents_count(status='pending')
 
     if pending_count > 0:
-        logger.info(f"Processing {pending_count} pending documents...")
-        processed, errors = analyzer.process_pending_documents()
-        logger.info(f"Initial processing complete: {processed} processed, {errors} errors")
+        logger.info(f"Found {pending_count} pending documents from previous runs")
+        logger.info("Processing will happen on next scheduled run or manual trigger")
+
+    logger.info("Initial scan complete")
+    logger.info("=" * 50)
 
     return new_count
 

@@ -4,16 +4,24 @@ Extracts structured information from call transcriptions
 """
 import json
 import logging
+import time
 from openai import OpenAI
 from config import OPENAI_API_KEY, OPENAI_MODEL, ANALYSIS_PROMPT
 import database as db
 
 # Setup logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Initialize OpenAI client
-client = OpenAI(api_key=OPENAI_API_KEY)
+client = None
+if OPENAI_API_KEY:
+    client = OpenAI(api_key=OPENAI_API_KEY)
+else:
+    logger.warning("OpenAI API key not set! Analysis will not work.")
 
 
 def analyze_transcription(content):
@@ -21,13 +29,17 @@ def analyze_transcription(content):
     Analyze transcription content using OpenAI
     Returns structured JSON with extracted information
     """
+    if not client:
+        logger.error("OpenAI client not initialized - API key missing")
+        return None
+
     try:
         response = client.chat.completions.create(
             model=OPENAI_MODEL,
             messages=[
                 {
                     "role": "system",
-                    "content": "Ты - эксперт по анализу телефонных разговоров службы поддержки. Извлекай структурированную информацию из транскрипций. Отвечай только валидным JSON."
+                    "content": "Ты - эксперт по анализу телефонных разговоров службы поддержки. Извлекай структурированную информацию из транскрипций. Отвечай только валидным JSON без markdown форматирования."
                 },
                 {
                     "role": "user",
@@ -42,10 +54,10 @@ def analyze_transcription(content):
 
         # Clean up response if it has markdown code blocks
         if result_text.startswith("```"):
-            result_text = result_text.split("```")[1]
-            if result_text.startswith("json"):
-                result_text = result_text[4:]
-            result_text = result_text.strip()
+            lines = result_text.split("\n")
+            # Remove first and last lines (``` markers)
+            lines = [l for l in lines if not l.strip().startswith("```")]
+            result_text = "\n".join(lines).strip()
 
         # Parse JSON
         result = json.loads(result_text)
@@ -53,6 +65,7 @@ def analyze_transcription(content):
 
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse OpenAI response as JSON: {e}")
+        logger.error(f"Response was: {result_text[:500]}")
         return None
     except Exception as e:
         logger.error(f"OpenAI API error: {e}")
@@ -61,7 +74,7 @@ def analyze_transcription(content):
 
 def process_document(doc_id):
     """
-    Process a document: analyze and extract facts
+    Process a single document: analyze and extract facts
     """
     doc = db.get_document(doc_id)
     if not doc:
@@ -69,13 +82,13 @@ def process_document(doc_id):
         return False
 
     if doc['status'] == 'processed':
-        logger.info(f"Document {doc_id} already processed")
+        logger.info(f"Document {doc_id} already processed, skipping")
         return True
 
     content = doc['content']
-    if not content:
+    if not content or not content.strip():
         logger.error(f"Document {doc_id} has no content")
-        db.update_document_status(doc_id, 'error')
+        db.update_document_status(doc_id, 'error', 'No content')
         return False
 
     logger.info(f"Processing document {doc_id}: {doc['filename']}")
@@ -83,7 +96,7 @@ def process_document(doc_id):
     # Analyze with OpenAI
     analysis = analyze_transcription(content)
     if not analysis:
-        db.update_document_status(doc_id, 'error')
+        db.update_document_status(doc_id, 'error', 'OpenAI analysis failed')
         return False
 
     # Extract and store facts
@@ -91,87 +104,59 @@ def process_document(doc_id):
 
     # Process contacts
     for contact in analysis.get('contacts', []):
-        db.add_fact(
-            doc_id,
-            'contact',
-            contact.get('type', 'unknown'),
-            json.dumps(contact, ensure_ascii=False)
-        )
+        if contact.get('value'):
+            db.add_fact(
+                doc_id,
+                'contact',
+                contact.get('type', 'unknown'),
+                f"{contact.get('value')} ({contact.get('role', 'unknown')})"
+            )
+            facts_added += 1
+
+    # Process main question
+    question = analysis.get('question', '')
+    if question:
+        db.add_fact(doc_id, 'question', 'main', question)
         facts_added += 1
 
-    # Process questions and answers - also add to FAQ
-    questions = analysis.get('questions', [])
-    answers = analysis.get('answers', [])
-
-    for q in questions:
-        db.add_fact(
-            doc_id,
-            'question',
-            q.get('topic', 'general'),
-            q.get('text', '')
-        )
+    # Process answer
+    answer = analysis.get('answer', '')
+    if answer:
+        db.add_fact(doc_id, 'answer', 'main', answer)
         facts_added += 1
 
-    for qa in answers:
-        db.add_fact(
-            doc_id,
-            'answer',
-            qa.get('question', '')[:100],
-            qa.get('answer', '')
-        )
+        # Add to FAQ if we have both question and answer
+        if question:
+            db.add_or_update_faq(question, answer, doc_id)
+
+    # Process problem
+    problem = analysis.get('problem', '')
+    if problem:
+        db.add_fact(doc_id, 'problem', 'description', problem)
         facts_added += 1
 
-        # Add to FAQ
-        if qa.get('question') and qa.get('answer'):
-            db.add_or_update_faq(qa['question'], qa['answer'], doc_id)
-
-    # Process problems
-    for problem in analysis.get('problems', []):
-        db.add_fact(
-            doc_id,
-            'problem',
-            problem.get('severity', 'medium'),
-            problem.get('description', '')
-        )
-        facts_added += 1
-
-    # Process solutions
-    for solution in analysis.get('solutions', []):
-        db.add_fact(
-            doc_id,
-            'solution',
-            solution.get('problem', '')[:100],
-            solution.get('solution', '')
-        )
+    # Process solution
+    solution = analysis.get('solution', '')
+    if solution:
+        db.add_fact(doc_id, 'solution', 'description', solution)
         facts_added += 1
 
     # Process agreements
-    for agreement in analysis.get('agreements', []):
-        db.add_fact(
-            doc_id,
-            'agreement',
-            agreement.get('when', 'unspecified'),
-            json.dumps(agreement, ensure_ascii=False)
-        )
+    agreements = analysis.get('agreements', '')
+    if agreements:
+        db.add_fact(doc_id, 'agreement', 'details', agreements)
         facts_added += 1
 
-    # Process products
-    for product in analysis.get('products', []):
-        db.add_fact(
-            doc_id,
-            'product',
-            product.get('action', 'discussed'),
-            product.get('name', '')
-        )
+    # Process sentiment
+    sentiment = analysis.get('sentiment', '')
+    if sentiment:
+        db.add_fact(doc_id, 'sentiment', 'customer', sentiment)
         facts_added += 1
 
-    # Store summary and sentiment as facts
-    if analysis.get('summary'):
-        db.add_fact(doc_id, 'summary', 'call_summary', analysis['summary'])
-        facts_added += 1
-
-    if analysis.get('sentiment'):
-        db.add_fact(doc_id, 'sentiment', 'customer_sentiment', analysis['sentiment'])
+    # Process summary
+    summary = analysis.get('summary', '')
+    if summary:
+        db.add_fact(doc_id, 'summary', 'call', summary)
         facts_added += 1
 
     # Update document status
@@ -180,19 +165,30 @@ def process_document(doc_id):
     # Update daily summary
     db.update_daily_summary(calls=1, facts=facts_added)
 
-    logger.info(f"Document {doc_id} processed: {facts_added} facts extracted")
+    logger.info(f"Document {doc_id} processed successfully: {facts_added} facts extracted")
     return True
 
 
 def process_pending_documents():
     """
-    Process all pending documents
+    Process all pending documents one by one
+    Returns tuple (processed_count, error_count, total_pending)
     """
-    pending = db.get_documents(status='pending', limit=50)
+    pending = db.get_pending_documents(limit=100)
+    total = len(pending)
+
+    if total == 0:
+        logger.info("No pending documents to process")
+        return 0, 0, 0
+
+    logger.info(f"Starting processing of {total} pending documents...")
+
     processed = 0
     errors = 0
 
-    for doc in pending:
+    for idx, doc in enumerate(pending, 1):
+        logger.info(f"Processing {idx} of {total} documents: {doc['filename']}")
+
         try:
             if process_document(doc['id']):
                 processed += 1
@@ -200,16 +196,19 @@ def process_pending_documents():
                 errors += 1
         except Exception as e:
             logger.error(f"Error processing document {doc['id']}: {e}")
+            db.update_document_status(doc['id'], 'error', str(e))
             errors += 1
 
-    logger.info(f"Batch processing complete: {processed} processed, {errors} errors")
-    return processed, errors
+        # Small delay to avoid rate limiting
+        time.sleep(0.5)
+
+    logger.info(f"Processing complete: {processed} processed, {errors} errors out of {total} total")
+    return processed, errors, total
 
 
 def analyze_manual_document(doc_id, doc_type):
     """
     Process manually uploaded documents (instructions, FAQ, etc.)
-    Extract relevant information based on document type
     """
     doc = db.get_document(doc_id)
     if not doc:
@@ -217,14 +216,12 @@ def analyze_manual_document(doc_id, doc_type):
 
     content = doc['content']
     if not content:
-        db.update_document_status(doc_id, 'error')
+        db.update_document_status(doc_id, 'error', 'No content')
         return False
 
     if doc_type == 'manual_faq':
-        # For FAQ documents, try to extract Q&A pairs
         return process_faq_document(doc_id, content)
     elif doc_type == 'manual_instruction':
-        # For instructions, store as knowledge
         return process_instruction_document(doc_id, content)
     else:
         # For other knowledge, just mark as processed
@@ -237,19 +234,23 @@ def process_faq_document(doc_id, content):
     Process uploaded FAQ document
     Try to extract Q&A pairs using OpenAI
     """
+    if not client:
+        db.update_document_status(doc_id, 'error', 'OpenAI API key not configured')
+        return False
+
     try:
         response = client.chat.completions.create(
             model=OPENAI_MODEL,
             messages=[
                 {
                     "role": "system",
-                    "content": "Извлеки все пары вопрос-ответ из документа. Верни JSON массив."
+                    "content": "Извлеки все пары вопрос-ответ из документа. Верни только валидный JSON."
                 },
                 {
                     "role": "user",
                     "content": f"""Извлеки все вопросы и ответы из этого FAQ документа.
 
-Верни JSON в формате:
+Верни JSON в формате (без markdown):
 {{"faq": [{{"question": "вопрос", "answer": "ответ"}}]}}
 
 Документ:
@@ -262,10 +263,9 @@ def process_faq_document(doc_id, content):
 
         result_text = response.choices[0].message.content.strip()
         if result_text.startswith("```"):
-            result_text = result_text.split("```")[1]
-            if result_text.startswith("json"):
-                result_text = result_text[4:]
-            result_text = result_text.strip()
+            lines = result_text.split("\n")
+            lines = [l for l in lines if not l.strip().startswith("```")]
+            result_text = "\n".join(lines).strip()
 
         result = json.loads(result_text)
 
@@ -273,14 +273,14 @@ def process_faq_document(doc_id, content):
             if item.get('question') and item.get('answer'):
                 db.add_or_update_faq(item['question'], item['answer'], doc_id)
                 db.add_fact(doc_id, 'question', 'faq', item['question'])
-                db.add_fact(doc_id, 'answer', item['question'][:100], item['answer'])
+                db.add_fact(doc_id, 'answer', 'faq', item['answer'])
 
         db.update_document_status(doc_id, 'processed')
         return True
 
     except Exception as e:
         logger.error(f"Error processing FAQ document: {e}")
-        db.update_document_status(doc_id, 'error')
+        db.update_document_status(doc_id, 'error', str(e))
         return False
 
 
@@ -289,19 +289,23 @@ def process_instruction_document(doc_id, content):
     Process instruction document
     Store key points as facts
     """
+    if not client:
+        db.update_document_status(doc_id, 'error', 'OpenAI API key not configured')
+        return False
+
     try:
         response = client.chat.completions.create(
             model=OPENAI_MODEL,
             messages=[
                 {
                     "role": "system",
-                    "content": "Извлеки ключевые инструкции и правила из документа."
+                    "content": "Извлеки ключевые инструкции и правила из документа. Верни только валидный JSON."
                 },
                 {
                     "role": "user",
                     "content": f"""Извлеки ключевые инструкции, правила и рекомендации из этого документа.
 
-Верни JSON:
+Верни JSON (без markdown):
 {{"instructions": [{{"topic": "тема", "instruction": "инструкция"}}]}}
 
 Документ:
@@ -314,10 +318,9 @@ def process_instruction_document(doc_id, content):
 
         result_text = response.choices[0].message.content.strip()
         if result_text.startswith("```"):
-            result_text = result_text.split("```")[1]
-            if result_text.startswith("json"):
-                result_text = result_text[4:]
-            result_text = result_text.strip()
+            lines = result_text.split("\n")
+            lines = [l for l in lines if not l.strip().startswith("```")]
+            result_text = "\n".join(lines).strip()
 
         result = json.loads(result_text)
 
@@ -334,5 +337,5 @@ def process_instruction_document(doc_id, content):
 
     except Exception as e:
         logger.error(f"Error processing instruction document: {e}")
-        db.update_document_status(doc_id, 'error')
+        db.update_document_status(doc_id, 'error', str(e))
         return False

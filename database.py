@@ -4,25 +4,44 @@ SQLite database with tables: documents, facts, faq, summary
 """
 import sqlite3
 import json
+import os
+import logging
 from datetime import datetime, date
 from contextlib import contextmanager
-from config import DATABASE_PATH
+from config import DATABASE_PATH, DATA_DIR
+
+# Setup logging
+logger = logging.getLogger(__name__)
+
+
+def ensure_data_dir():
+    """Ensure data directory exists with proper permissions"""
+    if not os.path.exists(DATA_DIR):
+        os.makedirs(DATA_DIR, mode=0o755, exist_ok=True)
+        logger.info(f"Created data directory: {DATA_DIR}")
 
 
 @contextmanager
 def get_db():
     """Context manager for database connections"""
-    conn = sqlite3.connect(DATABASE_PATH)
+    ensure_data_dir()
+    conn = sqlite3.connect(DATABASE_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     try:
         yield conn
         conn.commit()
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Database error: {e}")
+        raise
     finally:
         conn.close()
 
 
 def init_db():
     """Initialize database with all required tables"""
+    ensure_data_dir()
+
     with get_db() as conn:
         cursor = conn.cursor()
 
@@ -35,6 +54,7 @@ def init_db():
                 content TEXT,
                 processed_at TIMESTAMP,
                 status TEXT DEFAULT 'pending',
+                error_message TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -85,6 +105,8 @@ def init_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_facts_category ON facts(category)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_facts_document ON facts(document_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_faq_times_asked ON faq(times_asked DESC)")
+
+        logger.info("Database initialized successfully")
 
 
 # Document operations
@@ -140,22 +162,28 @@ def get_documents(doc_type=None, status=None, limit=100, offset=0):
         return cursor.fetchall()
 
 
-def update_document_status(doc_id, status, content=None):
-    """Update document status and optionally content"""
+def get_pending_documents(limit=50):
+    """Get all pending documents for processing"""
     with get_db() as conn:
         cursor = conn.cursor()
-        if content:
-            cursor.execute("""
-                UPDATE documents
-                SET status = ?, content = ?, processed_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            """, (status, content, doc_id))
-        else:
-            cursor.execute("""
-                UPDATE documents
-                SET status = ?, processed_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            """, (status, doc_id))
+        cursor.execute("""
+            SELECT * FROM documents
+            WHERE status = 'pending'
+            ORDER BY created_at ASC
+            LIMIT ?
+        """, (limit,))
+        return cursor.fetchall()
+
+
+def update_document_status(doc_id, status, error_message=None):
+    """Update document status"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE documents
+            SET status = ?, processed_at = CURRENT_TIMESTAMP, error_message = ?
+            WHERE id = ?
+        """, (status, error_message, doc_id))
 
 
 def get_documents_count(doc_type=None, status=None):
@@ -179,12 +207,14 @@ def get_documents_count(doc_type=None, status=None):
 # Fact operations
 def add_fact(document_id, category, key, value, confidence=1.0):
     """Add a new fact"""
+    if not value or not value.strip():
+        return None
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
             INSERT INTO facts (document_id, category, key, value, confidence)
             VALUES (?, ?, ?, ?, ?)
-        """, (document_id, category, key, value, confidence))
+        """, (document_id, category, key or '', value, confidence))
         return cursor.lastrowid
 
 
@@ -193,11 +223,13 @@ def add_facts_bulk(document_id, facts_list):
     with get_db() as conn:
         cursor = conn.cursor()
         for fact in facts_list:
-            cursor.execute("""
-                INSERT INTO facts (document_id, category, key, value, confidence)
-                VALUES (?, ?, ?, ?, ?)
-            """, (document_id, fact['category'], fact.get('key', ''),
-                  fact['value'], fact.get('confidence', 1.0)))
+            value = fact.get('value', '')
+            if value and value.strip():
+                cursor.execute("""
+                    INSERT INTO facts (document_id, category, key, value, confidence)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (document_id, fact['category'], fact.get('key', ''),
+                      value, fact.get('confidence', 1.0)))
 
 
 def get_facts(document_id=None, category=None, limit=100, offset=0):
@@ -253,6 +285,9 @@ def get_facts_by_category():
 # FAQ operations
 def add_or_update_faq(question, answer, source_doc_id):
     """Add new FAQ or update existing one"""
+    if not question or not answer:
+        return None
+
     with get_db() as conn:
         cursor = conn.cursor()
 
@@ -363,6 +398,12 @@ def get_total_stats():
 
         cursor.execute("SELECT COUNT(*) FROM documents WHERE status = 'processed'")
         stats['processed_documents'] = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM documents WHERE status = 'pending'")
+        stats['pending_documents'] = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM documents WHERE status = 'error'")
+        stats['error_documents'] = cursor.fetchone()[0]
 
         cursor.execute("SELECT COUNT(*) FROM facts")
         stats['total_facts'] = cursor.fetchone()[0]
