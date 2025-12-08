@@ -39,7 +39,7 @@ def analyze_transcription(content):
             messages=[
                 {
                     "role": "system",
-                    "content": "Ты - эксперт по анализу телефонных разговоров службы поддержки. Извлекай структурированную информацию из транскрипций. Отвечай только валидным JSON без markdown форматирования."
+                    "content": "You are an expert at analyzing customer support phone call transcriptions. Extract structured information from transcriptions. Respond only with valid JSON without markdown formatting. Always respond in English."
                 },
                 {
                     "role": "user",
@@ -244,16 +244,16 @@ def process_faq_document(doc_id, content):
             messages=[
                 {
                     "role": "system",
-                    "content": "Извлеки все пары вопрос-ответ из документа. Верни только валидный JSON."
+                    "content": "Extract all question-answer pairs from the document. Return only valid JSON. Always respond in English."
                 },
                 {
                     "role": "user",
-                    "content": f"""Извлеки все вопросы и ответы из этого FAQ документа.
+                    "content": f"""Extract all questions and answers from this FAQ document.
 
-Верни JSON в формате (без markdown):
-{{"faq": [{{"question": "вопрос", "answer": "ответ"}}]}}
+Return JSON in format (without markdown):
+{{"faq": [{{"question": "question text", "answer": "answer text"}}]}}
 
-Документ:
+Document:
 {content}"""
                 }
             ],
@@ -299,16 +299,16 @@ def process_instruction_document(doc_id, content):
             messages=[
                 {
                     "role": "system",
-                    "content": "Извлеки ключевые инструкции и правила из документа. Верни только валидный JSON."
+                    "content": "Extract key instructions and rules from the document. Return only valid JSON. Always respond in English."
                 },
                 {
                     "role": "user",
-                    "content": f"""Извлеки ключевые инструкции, правила и рекомендации из этого документа.
+                    "content": f"""Extract key instructions, rules and recommendations from this document.
 
-Верни JSON (без markdown):
-{{"instructions": [{{"topic": "тема", "instruction": "инструкция"}}]}}
+Return JSON (without markdown):
+{{"instructions": [{{"topic": "topic", "instruction": "instruction text"}}]}}
 
-Документ:
+Document:
 {content}"""
                 }
             ],

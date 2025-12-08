@@ -40,6 +40,12 @@
                 <button onclick="processDoc({{ document.id }})" class="btn btn-primary">Process Now</button>
             </div>
             {% endif %}
+
+            {% if document.error_message %}
+            <div class="alert alert-error" style="margin-top: 1rem;">
+                <strong>Error:</strong> {{ document.error_message }}
+            </div>
+            {% endif %}
         </div>
     </div>
 

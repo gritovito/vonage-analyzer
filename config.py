@@ -48,28 +48,28 @@ FACT_CATEGORIES = [
 ]
 
 # Analysis prompt for OpenAI
-ANALYSIS_PROMPT = """Проанализируй транскрипцию телефонного разговора службы поддержки.
+ANALYSIS_PROMPT = """Analyze this phone call transcription from a customer support center.
 
-Извлеки:
-1. КОНТАКТЫ: имена, телефоны, email, адреса (кто звонил, кому)
-2. ВОПРОС КЛИЕНТА: главный вопрос или проблема
-3. РЕШЕНИЕ: как оператор решил или предложил решить
-4. ДОГОВОРЁННОСТИ: что обещали, сроки
-5. ИТОГ: доволен ли клиент (positive/neutral/negative)
+Extract:
+1. CONTACTS: names, phone numbers, emails, addresses mentioned
+2. CUSTOMER QUESTION: main question or issue
+3. SOLUTION: how the operator resolved or offered to resolve
+4. AGREEMENTS: what was promised, deadlines
+5. SENTIMENT: customer satisfaction (positive/neutral/negative)
 
-Ответ ТОЛЬКО JSON без markdown:
+Return ONLY valid JSON without markdown:
 {
-  "contacts": [{"type": "имя/телефон/email", "value": "...", "role": "клиент/оператор"}],
-  "question": "главный вопрос клиента",
-  "answer": "ответ/решение оператора",
-  "problem": "описание проблемы если есть",
-  "solution": "как решили",
-  "agreements": "что договорились",
+  "contacts": [{"type": "name/phone/email", "value": "...", "role": "customer/operator"}],
+  "question": "main customer question in English",
+  "answer": "operator's response/solution in English",
+  "problem": "problem description if any",
+  "solution": "how it was resolved",
+  "agreements": "what was agreed",
   "sentiment": "positive/neutral/negative",
-  "summary": "краткое резюме в 1-2 предложения"
+  "summary": "brief 1-2 sentence summary in English"
 }
 
-Если данных нет - используй пустую строку "" или пустой массив [].
+If data is not available, use empty string "" or empty array [].
 
-ТРАНСКРИПЦИЯ:
+TRANSCRIPTION:
 """
