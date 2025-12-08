@@ -1,0 +1,17 @@
+[Unit]
+Description=Call Analyzer - FAQ Knowledge Base System
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/vonage-analyzer
+Environment=PATH=/var/www/vonage-analyzer/venv/bin
+EnvironmentFile=/var/www/vonage-analyzer/.env
+ExecStart=/var/www/vonage-analyzer/venv/bin/python app.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

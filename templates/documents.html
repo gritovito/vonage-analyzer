@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}Documents - Call Analyzer{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Documents</h1>
+    <a href="{{ url_for('upload') }}" class="btn btn-primary">Upload New</a>
+</div>
+
+<!-- Filters -->
+<div class="filters">
+    <form method="GET" class="filter-form">
+        <div class="filter-group">
+            <label>Type:</label>
+            <select name="type" onchange="this.form.submit()">
+                <option value="">All Types</option>
+                {% for key, value in doc_types.items() %}
+                <option value="{{ key }}" {% if current_type == key %}selected{% endif %}>{{ value }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="filter-group">
+            <label>Status:</label>
+            <select name="status" onchange="this.form.submit()">
+                <option value="">All Statuses</option>
+                <option value="pending" {% if current_status == 'pending' %}selected{% endif %}>Pending</option>
+                <option value="processed" {% if current_status == 'processed' %}selected{% endif %}>Processed</option>
+                <option value="error" {% if current_status == 'error' %}selected{% endif %}>Error</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <span class="result-count">{{ total }} documents</span>
+        </div>
+    </form>
+</div>
+
+<!-- Documents Table -->
+<div class="card">
+    <div class="card-body">
+        {% if documents %}
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Filename</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Processed</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for doc in documents %}
+                <tr>
+                    <td>{{ doc.id }}</td>
+                    <td><a href="{{ url_for('document_detail', doc_id=doc.id) }}">{{ doc.filename|truncate_text(50) }}</a></td>
+                    <td><span class="badge badge-type">{{ doc_types.get(doc.type, doc.type) }}</span></td>
+                    <td><span class="badge badge-{{ doc.status }}">{{ doc.status }}</span></td>
+                    <td>{{ doc.created_at|datetime }}</td>
+                    <td>{{ doc.processed_at|datetime if doc.processed_at else '-' }}</td>
+                    <td>
+                        <a href="{{ url_for('document_detail', doc_id=doc.id) }}" class="btn btn-sm">View</a>
+                        {% if doc.status == 'pending' or doc.status == 'error' %}
+                        <button onclick="processDoc({{ doc.id }})" class="btn btn-sm btn-secondary">Process</button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- Pagination -->
+        {% if total_pages > 1 %}
+        <div class="pagination">
+            {% if page > 1 %}
+            <a href="?page={{ page - 1 }}{% if current_type %}&type={{ current_type }}{% endif %}{% if current_status %}&status={{ current_status }}{% endif %}" class="btn btn-sm">&laquo; Previous</a>
+            {% endif %}
+
+            <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
+
+            {% if page < total_pages %}
+            <a href="?page={{ page + 1 }}{% if current_type %}&type={{ current_type }}{% endif %}{% if current_status %}&status={{ current_status }}{% endif %}" class="btn btn-sm">Next &raquo;</a>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% else %}
+        <p class="empty-state">No documents found. <a href="{{ url_for('upload') }}">Upload your first document</a></p>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function processDoc(docId) {
+    if (!confirm('Process this document now?')) return;
+
+    fetch('/api/process/' + docId, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                alert('Document processed successfully');
+                location.reload();
+            } else {
+                alert('Processing failed');
+            }
+        })
+        .catch(err => alert('Error: ' + err));
+}
+</script>
+{% endblock %}

@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Search - Call Analyzer{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Search Knowledge Base</h1>
+</div>
+
+<!-- Search Form -->
+<div class="search-container">
+    <form method="GET" class="search-form">
+        <input type="text" name="q" value="{{ query }}" placeholder="Search documents, facts, and FAQ..." class="search-input-large" autofocus>
+        <button type="submit" class="btn btn-primary">Search</button>
+    </form>
+</div>
+
+{% if query %}
+<!-- Results -->
+<div class="search-results">
+    {% if results %}
+        <!-- FAQ Results -->
+        {% if results.faq %}
+        <div class="result-section">
+            <h2>FAQ Matches ({{ results.faq|length }})</h2>
+            <div class="result-list">
+                {% for item in results.faq %}
+                <div class="result-item">
+                    <div class="result-title">Q: {{ item.question }}</div>
+                    <div class="result-content">A: {{ item.answer|truncate_text(200) }}</div>
+                    <div class="result-meta">Asked {{ item.times_asked }} times</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Facts Results -->
+        {% if results.facts %}
+        <div class="result-section">
+            <h2>Facts ({{ results.facts|length }})</h2>
+            <div class="result-list">
+                {% for fact in results.facts %}
+                <div class="result-item">
+                    <span class="badge badge-category">{{ fact.category }}</span>
+                    {% if fact.key %}<strong>{{ fact.key }}:</strong>{% endif %}
+                    {{ fact.value|truncate_text(200) }}
+                    <div class="result-meta">
+                        Source: <a href="{{ url_for('document_detail', doc_id=fact.document_id) }}">{{ fact.filename }}</a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Document Results -->
+        {% if results.documents %}
+        <div class="result-section">
+            <h2>Documents ({{ results.documents|length }})</h2>
+            <div class="result-list">
+                {% for doc in results.documents %}
+                <div class="result-item">
+                    <div class="result-title">
+                        <a href="{{ url_for('document_detail', doc_id=doc.id) }}">{{ doc.filename }}</a>
+                    </div>
+                    <div class="result-meta">
+                        <span class="badge badge-type">{{ doc.type }}</span>
+                        <span class="badge badge-{{ doc.status }}">{{ doc.status }}</span>
+                        {{ doc.created_at|datetime }}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if not results.faq and not results.facts and not results.documents %}
+        <div class="empty-state">
+            <h3>No results found</h3>
+            <p>Try different keywords or check the spelling</p>
+        </div>
+        {% endif %}
+    {% else %}
+        <div class="empty-state">
+            <h3>No results found</h3>
+            <p>Try different keywords or check the spelling</p>
+        </div>
+    {% endif %}
+</div>
+{% else %}
+<!-- Search Tips -->
+<div class="search-tips">
+    <h2>Search Tips</h2>
+    <ul>
+        <li>Search across all documents, extracted facts, and FAQ entries</li>
+        <li>Use keywords from customer questions or product names</li>
+        <li>Try searching for phone numbers or customer names</li>
+        <li>Search is case-insensitive</li>
+    </ul>
+</div>
+{% endif %}
+
+{% endblock %}

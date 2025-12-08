@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Facts - Call Analyzer{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Extracted Facts</h1>
+    <span class="badge badge-info">{{ total }} facts</span>
+</div>
+
+<!-- Category Filter -->
+<div class="category-filter">
+    <a href="{{ url_for('facts') }}" class="btn btn-sm {% if not current_category %}active{% endif %}">All</a>
+    {% for cat in facts_by_category %}
+    <a href="{{ url_for('facts', category=cat.category) }}" class="btn btn-sm {% if current_category == cat.category %}active{% endif %}">
+        {{ cat.category|title }} ({{ cat.count }})
+    </a>
+    {% endfor %}
+</div>
+
+<!-- Facts Table -->
+<div class="card">
+    <div class="card-body">
+        {% if facts %}
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Category</th>
+                    <th>Key</th>
+                    <th>Value</th>
+                    <th>Source</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for fact in facts %}
+                <tr>
+                    <td><span class="badge badge-category badge-{{ fact.category }}">{{ fact.category }}</span></td>
+                    <td>{{ fact.key|truncate_text(30) if fact.key else '-' }}</td>
+                    <td class="fact-value">{{ fact.value|truncate_text(150) }}</td>
+                    <td><a href="{{ url_for('document_detail', doc_id=fact.document_id) }}">{{ fact.filename|truncate_text(20) }}</a></td>
+                    <td>{{ fact.created_at|datetime }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- Pagination -->
+        {% if total_pages > 1 %}
+        <div class="pagination">
+            {% if page > 1 %}
+            <a href="?page={{ page - 1 }}{% if current_category %}&category={{ current_category }}{% endif %}" class="btn btn-sm">&laquo; Previous</a>
+            {% endif %}
+
+            <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
+
+            {% if page < total_pages %}
+            <a href="?page={{ page + 1 }}{% if current_category %}&category={{ current_category }}{% endif %}" class="btn btn-sm">Next &raquo;</a>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% else %}
+        <p class="empty-state">No facts found for this category</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Category Legend -->
+<div class="card">
+    <div class="card-header">
+        <h2>Category Legend</h2>
+    </div>
+    <div class="card-body">
+        <div class="legend-grid">
+            <div class="legend-item">
+                <span class="badge badge-category badge-contact">contact</span>
+                <span>Customer contact information (phone, email, name, address)</span>
+            </div>
+            <div class="legend-item">
+                <span class="badge badge-category badge-question">question</span>
+                <span>Questions asked by customers</span>
+            </div>
+            <div class="legend-item">
+                <span class="badge badge-category badge-answer">answer</span>
+                <span>Answers provided by operators</span>
+            </div>
+            <div class="legend-item">
+                <span class="badge badge-category badge-problem">problem</span>
+                <span>Problems and issues reported</span>
+            </div>
+            <div class="legend-item">
+                <span class="badge badge-category badge-solution">solution</span>
+                <span>Solutions and resolutions offered</span>
+            </div>
+            <div class="legend-item">
+                <span class="badge badge-category badge-agreement">agreement</span>
+                <span>Agreements and commitments made</span>
+            </div>
+            <div class="legend-item">
+                <span class="badge badge-category badge-product">product</span>
+                <span>Products and services discussed</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

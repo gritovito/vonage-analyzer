@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}{{ document.filename }} - Call Analyzer{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Document Details</h1>
+    <a href="{{ url_for('documents') }}" class="btn">&laquo; Back to Documents</a>
+</div>
+
+<div class="document-detail">
+    <!-- Document Info -->
+    <div class="card">
+        <div class="card-header">
+            <h2>{{ document.filename }}</h2>
+            <span class="badge badge-{{ document.status }}">{{ document.status }}</span>
+        </div>
+        <div class="card-body">
+            <div class="meta-grid">
+                <div class="meta-item">
+                    <span class="meta-label">ID:</span>
+                    <span class="meta-value">{{ document.id }}</span>
+                </div>
+                <div class="meta-item">
+                    <span class="meta-label">Type:</span>
+                    <span class="meta-value">{{ doc_types.get(document.type, document.type) }}</span>
+                </div>
+                <div class="meta-item">
+                    <span class="meta-label">Created:</span>
+                    <span class="meta-value">{{ document.created_at|datetime }}</span>
+                </div>
+                <div class="meta-item">
+                    <span class="meta-label">Processed:</span>
+                    <span class="meta-value">{{ document.processed_at|datetime if document.processed_at else 'Not processed' }}</span>
+                </div>
+            </div>
+
+            {% if document.status == 'pending' or document.status == 'error' %}
+            <div class="actions">
+                <button onclick="processDoc({{ document.id }})" class="btn btn-primary">Process Now</button>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Document Content -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Content</h2>
+        </div>
+        <div class="card-body">
+            <pre class="content-preview">{{ document.content if document.content else 'No content' }}</pre>
+        </div>
+    </div>
+
+    <!-- Extracted Facts -->
+    {% if facts %}
+    <div class="card">
+        <div class="card-header">
+            <h2>Extracted Facts ({{ facts|length }})</h2>
+        </div>
+        <div class="card-body">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Category</th>
+                        <th>Key</th>
+                        <th>Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for fact in facts %}
+                    <tr>
+                        <td><span class="badge badge-category">{{ fact.category }}</span></td>
+                        <td>{{ fact.key|truncate_text(50) if fact.key else '-' }}</td>
+                        <td>{{ fact.value|truncate_text(200) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function processDoc(docId) {
+    if (!confirm('Process this document now?')) return;
+
+    fetch('/api/process/' + docId, { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                alert('Document processed successfully');
+                location.reload();
+            } else {
+                alert('Processing failed');
+            }
+        })
+        .catch(err => alert('Error: ' + err));
+}
+</script>
+{% endblock %}

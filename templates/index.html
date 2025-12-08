@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Call Analyzer{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <h1>Dashboard</h1>
+
+    <!-- Statistics Cards -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.total_documents }}</div>
+            <div class="stat-label">Total Documents</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.total_transcriptions }}</div>
+            <div class="stat-label">Transcriptions</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.processed_documents }}</div>
+            <div class="stat-label">Processed</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.total_facts }}</div>
+            <div class="stat-label">Facts Extracted</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.total_faq }}</div>
+            <div class="stat-label">FAQ Entries</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">{{ stats.today_documents }}</div>
+            <div class="stat-label">Today</div>
+        </div>
+    </div>
+
+    <div class="dashboard-grid">
+        <!-- Recent Documents -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Recent Documents</h2>
+                <a href="{{ url_for('documents') }}" class="btn btn-sm">View All</a>
+            </div>
+            <div class="card-body">
+                {% if recent_docs %}
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Filename</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for doc in recent_docs %}
+                        <tr>
+                            <td><a href="{{ url_for('document_detail', doc_id=doc.id) }}">{{ doc.filename|truncate_text(40) }}</a></td>
+                            <td><span class="badge badge-type">{{ doc_types.get(doc.type, doc.type) }}</span></td>
+                            <td><span class="badge badge-{{ doc.status }}">{{ doc.status }}</span></td>
+                            <td>{{ doc.created_at|datetime }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="empty-state">No documents yet. <a href="{{ url_for('upload') }}">Upload your first document</a></p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Facts by Category -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Facts by Category</h2>
+                <a href="{{ url_for('facts') }}" class="btn btn-sm">View All</a>
+            </div>
+            <div class="card-body">
+                {% if facts_by_category %}
+                <div class="category-list">
+                    {% for cat in facts_by_category %}
+                    <a href="{{ url_for('facts', category=cat.category) }}" class="category-item">
+                        <span class="category-name">{{ cat.category|title }}</span>
+                        <span class="category-count">{{ cat.count }}</span>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="empty-state">No facts extracted yet</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Top FAQ -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Top Questions</h2>
+                <a href="{{ url_for('faq') }}" class="btn btn-sm">View All</a>
+            </div>
+            <div class="card-body">
+                {% if top_faq %}
+                <div class="faq-list">
+                    {% for item in top_faq %}
+                    <div class="faq-item">
+                        <div class="faq-question">{{ item.question|truncate_text(100) }}</div>
+                        <div class="faq-meta">
+                            <span class="times-asked">Asked {{ item.times_asked }} times</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="empty-state">No FAQ entries yet</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="quick-actions">
+        <h2>Quick Actions</h2>
+        <div class="action-buttons">
+            <a href="{{ url_for('upload') }}" class="btn btn-primary">Upload Document</a>
+            <button onclick="triggerScan()" class="btn btn-secondary">Scan for New Files</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function triggerScan() {
+    fetch('/api/scan', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            alert('Scan complete. Found ' + data.new_files + ' new files.');
+            if (data.new_files > 0) {
+                location.reload();
+            }
+        })
+        .catch(err => alert('Scan failed: ' + err));
+}
+</script>
+{% endblock %}

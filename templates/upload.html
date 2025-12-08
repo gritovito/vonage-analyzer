@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}Upload - Call Analyzer{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Upload Document</h1>
+</div>
+
+<div class="upload-container">
+    <div class="card">
+        <div class="card-header">
+            <h2>Upload New Document</h2>
+        </div>
+        <div class="card-body">
+            <form method="POST" enctype="multipart/form-data" class="upload-form">
+                <div class="form-group">
+                    <label for="doc_type">Document Type:</label>
+                    <select name="doc_type" id="doc_type" required>
+                        <option value="manual_faq">FAQ Document</option>
+                        <option value="manual_instruction">Instruction / Script</option>
+                        <option value="manual_knowledge">Knowledge Base</option>
+                    </select>
+                    <small class="help-text">
+                        <strong>FAQ Document:</strong> Contains questions and answers that will be extracted into FAQ<br>
+                        <strong>Instruction:</strong> Operator scripts, procedures, guidelines<br>
+                        <strong>Knowledge Base:</strong> General reference documents
+                    </small>
+                </div>
+
+                <div class="form-group">
+                    <label for="file">Select File:</label>
+                    <div class="drop-zone" id="dropZone">
+                        <input type="file" name="file" id="file" required accept=".txt,.json,.md,.pdf,.doc,.docx">
+                        <div class="drop-zone-text">
+                            <p>Drag & drop file here</p>
+                            <p>or click to select</p>
+                        </div>
+                        <div class="file-info" id="fileInfo"></div>
+                    </div>
+                    <small class="help-text">Supported formats: TXT, JSON, MD, PDF, DOC, DOCX (max 16MB)</small>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Upload & Process</button>
+                    <a href="{{ url_for('documents') }}" class="btn">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Instructions -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Tips for Better Results</h2>
+        </div>
+        <div class="card-body">
+            <div class="tips">
+                <div class="tip">
+                    <h3>FAQ Documents</h3>
+                    <p>Format your FAQ with clear question-answer pairs. Use markers like "Q:" and "A:" or numbered questions for best extraction.</p>
+                </div>
+                <div class="tip">
+                    <h3>Instructions</h3>
+                    <p>Include step-by-step procedures, rules, and guidelines. Use headers to separate different topics.</p>
+                </div>
+                <div class="tip">
+                    <h3>Text Format</h3>
+                    <p>Plain text (TXT) and Markdown (MD) files work best. Ensure files are UTF-8 encoded.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('file');
+const fileInfo = document.getElementById('fileInfo');
+
+// Drag and drop handlers
+dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.classList.add('drag-over');
+});
+
+dropZone.addEventListener('dragleave', () => {
+    dropZone.classList.remove('drag-over');
+});
+
+dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('drag-over');
+    if (e.dataTransfer.files.length) {
+        fileInput.files = e.dataTransfer.files;
+        updateFileInfo(e.dataTransfer.files[0]);
+    }
+});
+
+fileInput.addEventListener('change', () => {
+    if (fileInput.files.length) {
+        updateFileInfo(fileInput.files[0]);
+    }
+});
+
+function updateFileInfo(file) {
+    const size = (file.size / 1024).toFixed(1);
+    fileInfo.innerHTML = `<strong>${file.name}</strong> (${size} KB)`;
+    fileInfo.style.display = 'block';
+    dropZone.classList.add('has-file');
+}
+</script>
+{% endblock %}

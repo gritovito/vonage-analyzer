@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics - Call Analyzer{% endblock %}
+
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Analytics</h1>
+</div>
+
+<!-- Overview Stats -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_documents }}</div>
+        <div class="stat-label">Total Documents</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_transcriptions }}</div>
+        <div class="stat-label">Transcriptions</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_facts }}</div>
+        <div class="stat-label">Facts Extracted</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_faq }}</div>
+        <div class="stat-label">FAQ Entries</div>
+    </div>
+</div>
+
+<!-- Charts -->
+<div class="charts-grid">
+    <!-- Activity Chart -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Activity (Last 30 Days)</h2>
+        </div>
+        <div class="card-body">
+            <canvas id="activityChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Facts by Category -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Facts by Category</h2>
+        </div>
+        <div class="card-body">
+            <canvas id="categoryChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Daily Summary Table -->
+<div class="card">
+    <div class="card-header">
+        <h2>Daily Summary</h2>
+    </div>
+    <div class="card-body">
+        {% if summary %}
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Calls Processed</th>
+                    <th>New Facts</th>
+                    <th>New FAQ</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in summary %}
+                <tr>
+                    <td>{{ s.date }}</td>
+                    <td>{{ s.total_calls }}</td>
+                    <td>{{ s.new_facts }}</td>
+                    <td>{{ s.new_faq }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="empty-state">No data available yet</p>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const chartData = {{ chart_data|safe }};
+
+// Activity Chart
+const activityCtx = document.getElementById('activityChart').getContext('2d');
+new Chart(activityCtx, {
+    type: 'line',
+    data: {
+        labels: chartData.dates,
+        datasets: [{
+            label: 'Calls Processed',
+            data: chartData.calls,
+            borderColor: '#4a90d9',
+            backgroundColor: 'rgba(74, 144, 217, 0.1)',
+            fill: true,
+            tension: 0.3
+        }, {
+            label: 'Facts Extracted',
+            data: chartData.facts,
+            borderColor: '#5cb85c',
+            backgroundColor: 'rgba(92, 184, 92, 0.1)',
+            fill: true,
+            tension: 0.3
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: {
+                position: 'bottom'
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true
+            }
+        }
+    }
+});
+
+// Category Chart
+const categoryData = {
+    {% for cat in facts_by_category %}
+    '{{ cat.category }}': {{ cat.count }},
+    {% endfor %}
+};
+
+const categoryCtx = document.getElementById('categoryChart').getContext('2d');
+new Chart(categoryCtx, {
+    type: 'doughnut',
+    data: {
+        labels: Object.keys(categoryData),
+        datasets: [{
+            data: Object.values(categoryData),
+            backgroundColor: [
+                '#4a90d9',
+                '#5cb85c',
+                '#f0ad4e',
+                '#d9534f',
+                '#5bc0de',
+                '#9b59b6',
+                '#34495e'
+            ]
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: {
+                position: 'bottom'
+            }
+        }
+    }
+});
+</script>
+{% endblock %}

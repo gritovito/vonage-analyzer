@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}FAQ - Call Analyzer{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>FAQ Knowledge Base</h1>
+    <span class="badge badge-info">{{ total }} entries</span>
+</div>
+
+<!-- Sort Options -->
+<div class="filters">
+    <div class="filter-group">
+        <label>Sort by:</label>
+        <a href="?sort=times_asked" class="btn btn-sm {% if sort == 'times_asked' %}active{% endif %}">Most Asked</a>
+        <a href="?sort=last_updated" class="btn btn-sm {% if sort == 'last_updated' %}active{% endif %}">Recently Updated</a>
+    </div>
+</div>
+
+<!-- Search Box -->
+<div class="search-box">
+    <input type="text" id="faqSearch" placeholder="Search FAQ..." class="search-input">
+</div>
+
+<!-- FAQ List -->
+<div class="faq-container">
+    {% if faq_items %}
+        {% for item in faq_items %}
+        <div class="faq-card" data-question="{{ item.question|lower }}" data-answer="{{ item.answer|lower }}">
+            <div class="faq-question-header" onclick="toggleAnswer(this)">
+                <h3>{{ item.question }}</h3>
+                <span class="faq-meta">
+                    <span class="times-asked" title="Times asked">{{ item.times_asked }}x</span>
+                    <span class="toggle-icon">+</span>
+                </span>
+            </div>
+            <div class="faq-answer">
+                <p>{{ item.answer }}</p>
+                <div class="faq-footer">
+                    <small>Last updated: {{ item.last_updated|datetime }}</small>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+
+        <!-- Pagination -->
+        {% if total_pages > 1 %}
+        <div class="pagination">
+            {% if page > 1 %}
+            <a href="?page={{ page - 1 }}&sort={{ sort }}" class="btn btn-sm">&laquo; Previous</a>
+            {% endif %}
+
+            <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
+
+            {% if page < total_pages %}
+            <a href="?page={{ page + 1 }}&sort={{ sort }}" class="btn btn-sm">Next &raquo;</a>
+            {% endif %}
+        </div>
+        {% endif %}
+    {% else %}
+        <div class="empty-state">
+            <h3>No FAQ entries yet</h3>
+            <p>FAQ entries are automatically generated from processed call transcriptions.</p>
+            <p>You can also <a href="{{ url_for('upload') }}">upload FAQ documents</a> manually.</p>
+        </div>
+    {% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleAnswer(header) {
+    const card = header.closest('.faq-card');
+    card.classList.toggle('open');
+    const icon = header.querySelector('.toggle-icon');
+    icon.textContent = card.classList.contains('open') ? '-' : '+';
+}
+
+// Search functionality
+const searchInput = document.getElementById('faqSearch');
+searchInput.addEventListener('input', function() {
+    const query = this.value.toLowerCase();
+    const cards = document.querySelectorAll('.faq-card');
+
+    cards.forEach(card => {
+        const question = card.dataset.question;
+        const answer = card.dataset.answer;
+        if (question.includes(query) || answer.includes(query)) {
+            card.style.display = 'block';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+});
+</script>
+{% endblock %}
