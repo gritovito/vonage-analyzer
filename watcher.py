@@ -76,7 +76,6 @@ def scan_for_new_files():
         # Add to database
         doc_id = db.add_document(
             filename=filename,
-            doc_type='transcription',
             content=content,
             status='pending'
         )
