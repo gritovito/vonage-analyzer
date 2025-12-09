@@ -1,6 +1,6 @@
 """
-Call Analyzer v2.0 - Flask Web Application
-Self-learning Help Desk system with semantic matching and answer ratings
+Knowledge Hub - Flask Web Application
+Clustered Q&A system with semantic matching and answer effectiveness tracking
 """
 import os
 import json
@@ -11,10 +11,7 @@ from werkzeug.utils import secure_filename
 from apscheduler.schedulers.background import BackgroundScheduler
 import atexit
 
-from config import (
-    FLASK_HOST, FLASK_PORT, DEBUG,
-    UPLOAD_FOLDER, DOC_TYPES, DATA_DIR
-)
+from config import FLASK_HOST, FLASK_PORT, DEBUG, UPLOAD_FOLDER, DATA_DIR
 import database as db
 import analyzer
 import watcher
@@ -29,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 # Initialize Flask app
 app = Flask(__name__)
-app.secret_key = 'call-analyzer-secret-key-2024-v2'
+app.secret_key = 'knowledge-hub-secret-key-2024'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
 
@@ -120,108 +117,99 @@ def truncate_text(text, length=100):
 @app.route('/')
 def index():
     """Dashboard - main page with statistics"""
-    stats = db.get_total_stats()
-    recent_docs = db.get_documents(limit=10)
-    questions_by_topic = db.get_questions_by_topic()
-    top_questions = db.get_questions(limit=5, sort_by='times_asked')
+    stats = db.get_stats()
+    clusters = db.get_clusters()
+    questions_by_cluster = db.get_questions_by_cluster()
+    top_questions = db.get_top_questions(limit=5)
+    needs_work = db.get_needs_work_questions(limit=5)
     summary = db.get_summary(days=7)
+    recent_docs = db.get_documents(limit=10)
 
     return render_template('index.html',
                            stats=stats,
-                           recent_docs=recent_docs,
-                           questions_by_topic=questions_by_topic,
+                           clusters=clusters,
+                           questions_by_cluster=questions_by_cluster,
                            top_questions=top_questions,
+                           needs_work=needs_work,
                            summary=summary,
-                           doc_types=DOC_TYPES,
+                           recent_docs=recent_docs,
                            processing_status=processing_status)
 
 
-@app.route('/solutions')
-def solutions():
-    """Support Solutions - main working page with questions and answers"""
-    topic_id = request.args.get('topic', type=int)
+@app.route('/clusters')
+def clusters():
+    """All clusters view"""
+    clusters_list = db.get_clusters()
+    stats = db.get_stats()
+
+    return render_template('clusters.html',
+                           clusters=clusters_list,
+                           stats=stats)
+
+
+@app.route('/cluster/<int:cluster_id>')
+def cluster_detail(cluster_id):
+    """View cluster with questions"""
+    cluster = db.get_cluster(cluster_id)
+    if not cluster:
+        flash('Cluster not found', 'error')
+        return redirect(url_for('clusters'))
+
     page = int(request.args.get('page', 1))
     sort = request.args.get('sort', 'times_asked')
+    status = request.args.get('status')
     per_page = 20
     offset = (page - 1) * per_page
 
-    questions = db.get_questions(topic_id=topic_id, limit=per_page, offset=offset, sort_by=sort)
-    total = db.get_questions_count(topic_id=topic_id)
+    questions = db.get_questions(cluster_id=cluster_id, status=status, limit=per_page, offset=offset, sort_by=sort)
+    total = db.get_questions_count(cluster_id=cluster_id, status=status)
     total_pages = (total + per_page - 1) // per_page
-    topics = db.get_topics()
-    questions_by_topic = db.get_questions_by_topic()
 
-    return render_template('solutions.html',
+    return render_template('cluster_detail.html',
+                           cluster=cluster,
                            questions=questions,
-                           topics=topics,
-                           questions_by_topic=questions_by_topic,
-                           current_topic=topic_id,
                            page=page,
                            total_pages=total_pages,
                            total=total,
-                           sort=sort)
+                           sort=sort,
+                           current_status=status)
 
 
-@app.route('/solution/<int:question_id>')
-def solution_detail(question_id):
+@app.route('/question/<int:question_id>')
+def question_detail(question_id):
     """View single question with all answers"""
     question = db.get_question(question_id)
     if not question:
         flash('Question not found', 'error')
-        return redirect(url_for('solutions'))
+        return redirect(url_for('index'))
 
     answers = db.get_answers(question_id)
     variants = db.get_question_variants(question_id)
 
-    return render_template('solution_detail.html',
+    return render_template('question_detail.html',
                            question=question,
                            answers=answers,
                            variants=variants)
 
 
-@app.route('/knowledge')
-def knowledge():
-    """Knowledge Base - for onboarding materials"""
-    category = request.args.get('category')
-    page = int(request.args.get('page', 1))
-    per_page = 20
-    offset = (page - 1) * per_page
-
-    knowledge_items = db.get_knowledge(category=category, limit=per_page, offset=offset)
-    total = db.get_knowledge_count(category=category)
-    total_pages = (total + per_page - 1) // per_page
-
-    # Get unique categories
-    all_knowledge = db.get_knowledge(limit=1000)
-    categories = list(set(k['category'] for k in all_knowledge if k['category']))
-
-    return render_template('knowledge.html',
-                           knowledge=knowledge_items,
-                           categories=categories,
-                           current_category=category,
-                           page=page,
-                           total_pages=total_pages,
-                           total=total)
-
-
 @app.route('/search')
 def search():
-    """Smart search page with semantic search"""
+    """Search page with semantic search"""
     query = request.args.get('q', '')
     search_type = request.args.get('type', 'semantic')
     results = None
 
     if query:
         if search_type == 'semantic':
-            # Use semantic search
             results = {
                 'questions': embeddings.semantic_search(query, limit=20, threshold=0.3),
                 'is_semantic': True
             }
         else:
-            # Use text search
-            results = db.search_all(query)
-            results['is_semantic'] = False
+            results = {
+                'questions': [dict(q) for q in db.search_questions_text(query)],
+                'is_semantic': False
+            }
 
     return render_template('search.html',
                            query=query,
@@ -229,23 +217,38 @@ def search():
                            search_type=search_type)
 
 
+@app.route('/needs-work')
+def needs_work():
+    """Questions that need work (low effectiveness)"""
+    page = int(request.args.get('page', 1))
+    per_page = 20
+    offset = (page - 1) * per_page
+
+    questions = db.get_questions(status='needs_work', limit=per_page, offset=offset, sort_by='times_asked')
+    total = db.get_questions_count(status='needs_work')
+    total_pages = (total + per_page - 1) // per_page
+
+    return render_template('needs_work.html',
+                           questions=questions,
+                           page=page,
+                           total_pages=total_pages,
+                           total=total)
+
+
 @app.route('/documents')
 def documents():
     """List all documents"""
-    doc_type = request.args.get('type')
     status = request.args.get('status')
     page = int(request.args.get('page', 1))
     per_page = 20
     offset = (page - 1) * per_page
 
-    docs = db.get_documents(doc_type=doc_type, status=status, limit=per_page, offset=offset)
-    total = db.get_documents_count(doc_type=doc_type, status=status)
+    docs = db.get_documents(status=status, limit=per_page, offset=offset)
+    total = db.get_documents_count(status=status)
     total_pages = (total + per_page - 1) // per_page
 
     return render_template('documents.html',
                            documents=docs,
-                           doc_types=DOC_TYPES,
-                           current_type=doc_type,
                            current_status=status,
                            page=page,
                            total_pages=total_pages,
@@ -270,8 +273,7 @@ def document_detail(doc_id):
 
     return render_template('document_detail.html',
                            document=doc,
-                           analysis=analysis,
-                           doc_types=DOC_TYPES)
+                           analysis=analysis)
 
 
 @app.route('/upload', methods=['GET', 'POST'])
@@ -283,7 +285,7 @@ def upload():
             return redirect(request.url)
 
         file = request.files['file']
-        doc_type = request.form.get('doc_type', 'knowledge_base')
+        doc_type = request.form.get('doc_type', 'manual_faq')
 
         if file.filename == '':
             flash('No file selected', 'error')
@@ -311,7 +313,6 @@ def upload():
             # Save to database
             doc_id = db.add_document(
                 filename=filename,
-                doc_type=doc_type,
                 content=content,
                 status='pending'
             )
@@ -328,15 +329,15 @@ def upload():
         flash('Invalid file type', 'error')
         return redirect(request.url)
 
-    return render_template('upload.html', doc_types=DOC_TYPES)
+    return render_template('upload.html')
 
 
 @app.route('/analytics')
 def analytics():
     """Analytics page with charts"""
-    stats = db.get_total_stats()
+    stats = db.get_stats()
     summary = db.get_summary(days=30)
-    questions_by_topic = db.get_questions_by_topic()
+    questions_by_cluster = db.get_questions_by_cluster()
 
     # Prepare chart data
     chart_data = {
@@ -356,7 +357,7 @@ def analytics():
     return render_template('analytics.html',
                            stats=stats,
                            summary=summary,
-                           questions_by_topic=questions_by_topic,
+                           questions_by_cluster=questions_by_cluster,
                            chart_data=json.dumps(chart_data))
 
 
@@ -365,7 +366,7 @@ def analytics():
 @app.route('/api/stats')
 def api_stats():
     """Get current statistics"""
-    stats = db.get_total_stats()
+    stats = db.get_stats()
     stats['processing'] = processing_status
     return jsonify(stats)
 
@@ -448,15 +449,8 @@ def api_search():
         results = embeddings.semantic_search(query, limit=20, threshold=0.3)
         return jsonify({'questions': results, 'is_semantic': True})
     else:
-        results = db.search_all(query)
-        response = {
-            'questions': [dict(q) for q in results['questions']],
-            'answers': [dict(a) for a in results['answers']],
-            'knowledge': [dict(k) for k in results['knowledge']],
-            'documents': [dict(d) for d in results['documents']],
-            'is_semantic': False
-        }
-        return jsonify(response)
+        questions = [dict(q) for q in db.search_questions_text(query)]
+        return jsonify({'questions': questions, 'is_semantic': False})
 
 
 @app.route('/api/question/<int:question_id>/answers')
@@ -470,22 +464,11 @@ def api_question_answers(question_id):
 def api_answer_feedback(answer_id):
     """Submit feedback for an answer"""
     data = request.get_json()
-    resolved = data.get('resolved', False)
-    satisfied = data.get('satisfied', False)
+    helpful = data.get('helpful', False)
 
-    db.update_answer_outcome(answer_id, resolved, satisfied)
+    db.update_answer_feedback(answer_id, helpful)
 
     return jsonify({'success': True})
-
-
-@app.route('/api/migrate', methods=['POST'])
-def api_migrate():
-    """Run migration from v1 to v2"""
-    try:
-        db.migrate_from_v1()
-        return jsonify({'success': True, 'message': 'Migration completed'})
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/reprocess', methods=['POST'])
@@ -533,11 +516,8 @@ def server_error(e):
 
 
 # Run initial scan on startup
-logger.info("Starting Call Analyzer v2.0...")
+logger.info("Starting Knowledge Hub...")
 watcher.run_initial_scan()
-
-# Run migration if needed
-db.migrate_from_v1()
 
 
 if __name__ == '__main__':

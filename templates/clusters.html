@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}Clusters - Knowledge Hub{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Question Clusters</h1>
+</div>
+
+<!-- Stats -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_clusters }}</div>
+        <div class="stat-label">Clusters</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_questions }}</div>
+        <div class="stat-label">Questions</div>
+    </div>
+    <div class="stat-card stat-processed">
+        <div class="stat-value">{{ stats.resolved_count }}</div>
+        <div class="stat-label">Resolved</div>
+    </div>
+    <div class="stat-card stat-warning">
+        <div class="stat-value">{{ stats.needs_work_count }}</div>
+        <div class="stat-label">Needs Work</div>
+    </div>
+</div>
+
+<!-- Clusters Grid -->
+<div class="clusters-page-grid">
+    {% for cluster in clusters %}
+    <a href="{{ url_for('cluster_detail', cluster_id=cluster.id) }}" class="cluster-page-card" style="border-left-color: {{ cluster.color }}">
+        <div class="cluster-page-icon" style="background-color: {{ cluster.color }}20">{{ cluster.icon }}</div>
+        <div class="cluster-page-info">
+            <h3>{{ cluster.name }}</h3>
+            <p class="cluster-description">{{ cluster.description }}</p>
+            <div class="cluster-page-stats">
+                <span class="stat">{{ cluster.question_count }} questions</span>
+                <span class="stat resolved">{{ cluster.resolved_count }} resolved</span>
+            </div>
+        </div>
+        <div class="cluster-arrow">&rarr;</div>
+    </a>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block head %}
+<style>
+.clusters-page-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-top: 2rem;
+}
+
+.cluster-page-card {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    padding: 1.5rem;
+    background: white;
+    border-radius: 8px;
+    border-left: 4px solid;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.2s;
+}
+
+.cluster-page-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    transform: translateX(4px);
+}
+
+.cluster-page-icon {
+    font-size: 2rem;
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+}
+
+.cluster-page-info {
+    flex: 1;
+}
+
+.cluster-page-info h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.2rem;
+    color: #333;
+}
+
+.cluster-description {
+    margin: 0 0 0.75rem 0;
+    color: #666;
+    font-size: 0.9rem;
+}
+
+.cluster-page-stats {
+    display: flex;
+    gap: 1.5rem;
+}
+
+.cluster-page-stats .stat {
+    font-size: 0.85rem;
+    color: #888;
+}
+
+.cluster-page-stats .stat.resolved {
+    color: #28a745;
+}
+
+.cluster-arrow {
+    font-size: 1.5rem;
+    color: #ccc;
+}
+
+.cluster-page-card:hover .cluster-arrow {
+    color: #666;
+}
+</style>
+{% endblock %}

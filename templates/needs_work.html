@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}Needs Work - Knowledge Hub{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Questions That Need Work</h1>
+    <p class="page-description">These questions have answers with low effectiveness (&lt;70%). They need better solutions.</p>
+</div>
+
+<!-- Questions List -->
+<div class="card">
+    <div class="card-header">
+        <h2>Questions ({{ total }})</h2>
+    </div>
+    <div class="card-body">
+        {% if questions %}
+        <div class="questions-list">
+            {% for q in questions %}
+            <a href="{{ url_for('question_detail', question_id=q.id) }}" class="question-card needs-work">
+                <div class="question-main">
+                    <span class="cluster-badge" style="background-color: {{ q.cluster_color }}">{{ q.cluster_icon }}</span>
+                    <span class="question-text">{{ q.canonical_text }}</span>
+                </div>
+                <div class="question-meta">
+                    <span class="cluster-name">{{ q.cluster_name }}</span>
+                    <span class="times-asked">{{ q.times_asked }}x asked</span>
+                    <span class="answer-count">{{ q.answer_count }} answers</span>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+
+        <!-- Pagination -->
+        {% if total_pages > 1 %}
+        <div class="pagination">
+            {% if page > 1 %}
+            <a href="{{ url_for('needs_work', page=page-1) }}">&laquo; Previous</a>
+            {% endif %}
+
+            <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
+
+            {% if page < total_pages %}
+            <a href="{{ url_for('needs_work', page=page+1) }}">Next &raquo;</a>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="empty-state success">
+            <h3>All questions are resolved!</h3>
+            <p>There are no questions that need work at this time.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block head %}
+<style>
+.page-description {
+    color: #666;
+    margin-top: 0.5rem;
+}
+
+.questions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.question-card {
+    display: flex;
+    flex-direction: column;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 6px;
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.2s;
+    border-left: 4px solid #ffc107;
+}
+
+.question-card:hover {
+    background: #e9ecef;
+    transform: translateX(4px);
+}
+
+.question-card.needs-work {
+    background: #fff8e1;
+}
+
+.question-main {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.cluster-badge {
+    padding: 0.3rem 0.5rem;
+    border-radius: 4px;
+    color: white;
+    font-size: 0.9rem;
+}
+
+.question-text {
+    color: #333;
+    font-size: 1rem;
+}
+
+.question-meta {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.85rem;
+    color: #888;
+    padding-left: 2.5rem;
+}
+
+.empty-state.success {
+    background: #d4edda;
+    padding: 2rem;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.empty-state.success h3 {
+    color: #155724;
+}
+
+.empty-state.success p {
+    color: #155724;
+    opacity: 0.8;
+}
+</style>
+{% endblock %}

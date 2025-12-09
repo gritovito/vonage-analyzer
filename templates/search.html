@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Search - Call Analyzer{% endblock %}
+{% block title %}Search - Knowledge Hub{% endblock %}
 
 {% block content %}
 <div class="page-header">
-    <h1>Smart Search</h1>
+    <h1>Search</h1>
 </div>
 
 <!-- Search Form -->
@@ -22,138 +22,44 @@
 {% if query %}
 <!-- Results -->
 <div class="search-results">
-    {% if results %}
-        {% if results.is_semantic %}
-        <!-- Semantic Search Results -->
-        {% if results.questions %}
+    {% if results and results.questions %}
         <div class="result-section">
-            <h2>Similar Questions Found ({{ results.questions|length }})</h2>
+            <h2>{% if results.is_semantic %}Similar Questions{% else %}Matching Questions{% endif %} ({{ results.questions|length }})</h2>
+            {% if results.is_semantic %}
             <p class="result-description">Questions semantically similar to your query, ranked by AI similarity score.</p>
+            {% endif %}
             <div class="result-list">
                 {% for item in results.questions %}
-                <div class="result-item semantic-result">
+                <div class="result-item {% if results.is_semantic %}semantic-result{% endif %}">
+                    {% if results.is_semantic %}
                     <div class="similarity-score">
                         <div class="score-circle" style="--score: {{ item.similarity }}">
                             {{ item.similarity }}%
                         </div>
                         <span class="score-label">match</span>
                     </div>
+                    {% endif %}
                     <div class="result-content-area">
-                        <a href="{{ url_for('solution_detail', question_id=item.id) }}" class="result-title">
+                        <a href="{{ url_for('question_detail', question_id=item.id) }}" class="result-title">
                             {{ item.canonical_text }}
                         </a>
                         <div class="result-meta">
-                            <span class="badge" style="background: {{ item.topic_color }}20; color: {{ item.topic_color }}">
-                                {{ item.topic_icon }} {{ item.topic_name }}
+                            <span class="cluster-badge" style="background-color: {{ item.cluster_color }}">
+                                {{ item.cluster_icon }} {{ item.cluster_name }}
                             </span>
                             <span class="times-asked">{{ item.times_asked }}x asked</span>
+                            <span class="status-badge status-{{ item.status }}">{{ item.status }}</span>
                         </div>
                     </div>
                 </div>
                 {% endfor %}
             </div>
         </div>
-        {% else %}
-        <div class="empty-state">
-            <h3>No similar questions found</h3>
-            <p>Try rephrasing your query or use text search for exact matches.</p>
-        </div>
-        {% endif %}
-
-        {% else %}
-        <!-- Text Search Results -->
-
-        <!-- Questions -->
-        {% if results.questions %}
-        <div class="result-section">
-            <h2>Questions ({{ results.questions|length }})</h2>
-            <div class="result-list">
-                {% for item in results.questions %}
-                <div class="result-item">
-                    <a href="{{ url_for('solution_detail', question_id=item.id) }}" class="result-title">
-                        {{ item.canonical_text }}
-                    </a>
-                    <div class="result-meta">
-                        <span class="badge" style="background: {{ item.topic_color }}20; color: {{ item.topic_color }}">
-                            {{ item.topic_icon }} {{ item.topic_name }}
-                        </span>
-                        <span class="times-asked">{{ item.times_asked }}x asked</span>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
-
-        <!-- Answers -->
-        {% if results.answers %}
-        <div class="result-section">
-            <h2>Answers ({{ results.answers|length }})</h2>
-            <div class="result-list">
-                {% for item in results.answers %}
-                <div class="result-item">
-                    <div class="result-title">{{ item.question_text|truncate_text(100) }}</div>
-                    <div class="result-content">{{ item.answer_text|truncate_text(200) }}</div>
-                    <div class="result-meta">
-                        Effectiveness: {{ item.effectiveness_score|round(0)|int }}%
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
-
-        <!-- Knowledge -->
-        {% if results.knowledge %}
-        <div class="result-section">
-            <h2>Knowledge Base ({{ results.knowledge|length }})</h2>
-            <div class="result-list">
-                {% for item in results.knowledge %}
-                <div class="result-item">
-                    <div class="result-title">{{ item.title }}</div>
-                    <div class="result-content">{{ item.content|truncate_text(200) }}</div>
-                    {% if item.category %}
-                    <span class="badge badge-category">{{ item.category }}</span>
-                    {% endif %}
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
-
-        <!-- Documents -->
-        {% if results.documents %}
-        <div class="result-section">
-            <h2>Documents ({{ results.documents|length }})</h2>
-            <div class="result-list">
-                {% for doc in results.documents %}
-                <div class="result-item">
-                    <div class="result-title">
-                        <a href="{{ url_for('document_detail', doc_id=doc.id) }}">{{ doc.filename }}</a>
-                    </div>
-                    <div class="result-meta">
-                        <span class="badge badge-type">{{ doc.type }}</span>
-                        <span class="badge badge-{{ doc.status }}">{{ doc.status }}</span>
-                        {{ doc.created_at|datetime }}
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        {% endif %}
-
-        {% if not results.questions and not results.answers and not results.knowledge and not results.documents %}
-        <div class="empty-state">
-            <h3>No results found</h3>
-            <p>Try different keywords or use semantic search for AI-powered matching.</p>
-        </div>
-        {% endif %}
-        {% endif %}
     {% else %}
-        <div class="empty-state">
-            <h3>No results found</h3>
-            <p>Try different keywords or check the spelling</p>
-        </div>
+    <div class="empty-state">
+        <h3>No results found</h3>
+        <p>Try different keywords or {% if search_type == 'semantic' %}use text search{% else %}use semantic search{% endif %}.</p>
+    </div>
     {% endif %}
 </div>
 {% else %}
@@ -161,10 +67,9 @@
 <div class="search-tips">
     <h2>Search Tips</h2>
     <ul>
-        <li><strong>Semantic Search (AI):</strong> Describe the problem in natural language. Our AI will find questions with similar meaning, even if the words are different.</li>
-        <li><strong>Text Search:</strong> Find exact keyword matches across all questions, answers, and knowledge base.</li>
+        <li><strong>Semantic Search (AI):</strong> Describe the problem in natural language. Our AI will find questions with similar meaning.</li>
+        <li><strong>Text Search:</strong> Find exact keyword matches in questions.</li>
         <li>Example: "phone won't turn on" will match "device not powering up" in semantic search.</li>
-        <li>Use semantic search when you want to find related problems that customers might describe differently.</li>
     </ul>
 </div>
 {% endif %}
@@ -223,12 +128,6 @@
     height: 50px;
     background: white;
     border-radius: 50%;
-}
-
-.score-circle::after {
-    content: attr(style);
-    position: relative;
-    z-index: 1;
 }
 
 .score-label {

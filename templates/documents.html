@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Documents - Call Analyzer{% endblock %}
+{% block title %}Documents - Knowledge Hub{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -11,15 +11,6 @@
 <!-- Filters -->
 <div class="filters">
     <form method="GET" class="filter-form">
-        <div class="filter-group">
-            <label>Type:</label>
-            <select name="type" onchange="this.form.submit()">
-                <option value="">All Types</option>
-                {% for key, value in doc_types.items() %}
-                <option value="{{ key }}" {% if current_type == key %}selected{% endif %}>{{ value }}</option>
-                {% endfor %}
-            </select>
-        </div>
         <div class="filter-group">
             <label>Status:</label>
             <select name="status" onchange="this.form.submit()">
@@ -44,7 +35,6 @@
                 <tr>
                     <th>ID</th>
                     <th>Filename</th>
-                    <th>Type</th>
                     <th>Status</th>
                     <th>Created</th>
                     <th>Processed</th>
@@ -56,7 +46,6 @@
                 <tr>
                     <td>{{ doc.id }}</td>
                     <td><a href="{{ url_for('document_detail', doc_id=doc.id) }}">{{ doc.filename|truncate_text(50) }}</a></td>
-                    <td><span class="badge badge-type">{{ doc_types.get(doc.type, doc.type) }}</span></td>
                     <td><span class="badge badge-{{ doc.status }}">{{ doc.status }}</span></td>
                     <td>{{ doc.created_at|datetime }}</td>
                     <td>{{ doc.processed_at|datetime if doc.processed_at else '-' }}</td>
@@ -75,13 +64,13 @@
         {% if total_pages > 1 %}
         <div class="pagination">
             {% if page > 1 %}
-            <a href="?page={{ page - 1 }}{% if current_type %}&type={{ current_type }}{% endif %}{% if current_status %}&status={{ current_status }}{% endif %}" class="btn btn-sm">&laquo; Previous</a>
+            <a href="?page={{ page - 1 }}{% if current_status %}&status={{ current_status }}{% endif %}" class="btn btn-sm">&laquo; Previous</a>
             {% endif %}
 
             <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
 
             {% if page < total_pages %}
-            <a href="?page={{ page + 1 }}{% if current_type %}&type={{ current_type }}{% endif %}{% if current_status %}&status={{ current_status }}{% endif %}" class="btn btn-sm">Next &raquo;</a>
+            <a href="?page={{ page + 1 }}{% if current_status %}&status={{ current_status }}{% endif %}" class="btn btn-sm">Next &raquo;</a>
             {% endif %}
         </div>
         {% endif %}

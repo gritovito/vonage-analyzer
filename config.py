@@ -1,27 +1,26 @@
 """
-Configuration settings for Call Analyzer v2.0
+Knowledge Hub Configuration
 """
 import os
-
-# Load .env file if exists
 from dotenv import load_dotenv
+
 load_dotenv()
 
-# OpenAI API - set via environment variable or .env file
+# OpenAI API
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL = "gpt-4o-mini"
 EMBEDDING_MODEL = "text-embedding-3-small"
 
-# Semantic matching threshold (cosine similarity)
+# Semantic matching threshold
 SIMILARITY_THRESHOLD = 0.82
 
 # Paths
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
-DATABASE_PATH = os.path.join(DATA_DIR, "knowledge.db")
+DATABASE_PATH = os.path.join(DATA_DIR, "knowledge_hub.db")
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 
-# Transcription source folder (on server)
+# Transcription source folder
 TRANSCRIPTION_FOLDER = "/var/www/whisper/outputs"
 
 # Flask settings
@@ -30,70 +29,68 @@ FLASK_PORT = 5001
 DEBUG = False
 
 # Watcher settings
-WATCH_INTERVAL_SECONDS = 300  # 5 minutes
+WATCH_INTERVAL_SECONDS = 300
 
-# Document types
-DOC_TYPES = {
-    "transcription": "Call Transcription",
-    "knowledge_base": "Knowledge Base",
-    "manual_faq": "FAQ Document",
-    "manual_instruction": "Instruction"
-}
-
-# Topics (categories) for questions
-TOPIC_CATEGORIES = [
+# Clusters
+CLUSTERS = [
+    "Messaging",
+    "Calls & Voice",
+    "Data & Internet",
     "Device Issues",
-    "Software & Apps",
+    "Apps & Software",
     "Account & Billing",
-    "Connectivity",
-    "Store & Pickup",
+    "Store & Service",
     "General Inquiry"
 ]
 
-# Analysis prompt for OpenAI - extracts structured data from transcriptions
+# Analysis prompt for GPT
 ANALYSIS_PROMPT = """Analyze this customer support call transcription.
 
-Extract the following information:
+Determine:
 
-1. TOPIC: Main category of the issue. Choose one:
-   - Device Issues (hardware, screen, battery, buttons, physical damage)
-   - Software & Apps (updates, settings, applications, OS issues)
-   - Account & Billing (payments, subscriptions, account management)
-   - Connectivity (network, WiFi, Bluetooth, calls, data issues)
-   - Store & Pickup (orders, delivery, store pickup, returns)
+1. CLUSTER: Which category best fits this issue?
+   - Messaging (SMS, MMS, messages delayed, not sending)
+   - Calls & Voice (call quality, can't make calls, voicemail)
+   - Data & Internet (slow data, no internet, WiFi issues)
+   - Device Issues (screen, battery, charging, buttons)
+   - Apps & Software (app crashes, updates, settings)
+   - Account & Billing (payments, plans, account issues)
+   - Store & Service (pickup, repair, warranty)
    - General Inquiry (other questions)
 
-2. PROBLEM: What issue did the customer have? Generalize it without specific personal details.
+2. QUESTION: What is the customer's main question/problem?
+   - Write a GENERALIZED version (no specific names, numbers, dates)
+   - Example: "Messages arriving late" not "My messages from John came 2 hours late yesterday"
 
-3. SOLUTION: How did the operator try to solve it? What advice or actions were taken?
+3. ANSWER: What solution did the operator provide?
+   - Write the actionable advice given
+   - Example: "Clear the storage for your message app in Settings"
 
 4. RESOLUTION: Was the problem resolved?
    - resolved: Problem was fully solved
-   - partial: Problem was partially addressed
    - unresolved: Problem was not solved
-   - unknown: Cannot determine from the call
+   - partial: Partially addressed
+   - unknown: Cannot determine
 
-5. SATISFACTION: Customer's apparent satisfaction level
-   - positive: Customer seemed happy/satisfied
+5. SATISFACTION: Customer sentiment at the end
+   - positive: Customer seemed satisfied
    - neutral: Customer was neutral
-   - negative: Customer was unhappy/frustrated
+   - negative: Customer was frustrated
 
-Return ONLY valid JSON without markdown formatting:
+Return JSON only (no markdown):
 {
-  "topic": "category name from list above",
-  "problem": "generalized problem description without personal details",
-  "problem_keywords": ["keyword1", "keyword2", "keyword3"],
-  "solution": "what the operator suggested or did to help",
-  "resolution": "resolved/partial/unresolved/unknown",
-  "satisfaction": "positive/neutral/negative",
-  "summary": "1-2 sentence summary of the call in English"
+  "cluster": "category name from list above",
+  "question": "generalized question/problem",
+  "answer": "solution provided by operator",
+  "resolution": "resolved/unresolved/partial/unknown",
+  "satisfaction": "positive/neutral/negative"
 }
 
 IMPORTANT:
-- Generalize the problem (no specific names, phone numbers, order IDs, dates)
-- Focus on the TYPE of problem, not specific details
-- Solution should be actionable advice that could help others
-- All text should be in English
+- Generalize the question (no names, phone numbers, dates, order IDs)
+- Focus on the TYPE of problem
+- Answer should be actionable advice
+- All text in English
 
 TRANSCRIPTION:
 """

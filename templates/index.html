@@ -1,40 +1,16 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - Call Analyzer{% endblock %}
+{% block title %}Dashboard - Knowledge Hub{% endblock %}
 
 {% block content %}
 <div class="page-header">
     <h1>Dashboard</h1>
-    <div class="quick-actions-bar">
-        <button class="btn btn-primary" onclick="scanFiles()" id="scan-btn">Scan for New Files</button>
-        <button class="btn btn-success" onclick="processAll()" id="process-btn">Process All Pending</button>
-        <span class="status-text" id="status-text">
-            {% if processing_status.is_processing %}
-                Processing...
-            {% else %}
-                Ready
-            {% endif %}
-        </span>
+    <div class="header-actions">
+        <button class="btn btn-primary" onclick="scanAndProcess()">Scan & Process</button>
     </div>
 </div>
 
-{% if processing_status.is_processing %}
-<div class="processing-banner" id="processing-banner">
-    <div class="processing-info">
-        <div class="spinner"></div>
-        <span id="processing-text">Processing documents... {{ processing_status.current }}/{{ processing_status.total }}</span>
-    </div>
-</div>
-{% else %}
-<div class="processing-banner" id="processing-banner" style="display: none;">
-    <div class="processing-info">
-        <div class="spinner"></div>
-        <span id="processing-text">Processing...</span>
-    </div>
-</div>
-{% endif %}
-
-<!-- Statistics Cards -->
+<!-- Overview Stats -->
 <div class="stats-grid">
     <div class="stat-card">
         <div class="stat-value">{{ stats.total_questions }}</div>
@@ -48,214 +24,154 @@
         <div class="stat-value">{{ stats.resolved_count }}</div>
         <div class="stat-label">Resolved</div>
     </div>
+    <div class="stat-card stat-warning">
+        <div class="stat-value">{{ stats.needs_work_count }}</div>
+        <div class="stat-label">Needs Work</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_documents }}</div>
+        <div class="stat-label">Documents</div>
+    </div>
     <div class="stat-card stat-pending">
-        <div class="stat-value" id="pending-count">{{ stats.pending_documents }}</div>
+        <div class="stat-value">{{ stats.pending_documents }}</div>
         <div class="stat-label">Pending</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-value">{{ stats.total_transcriptions }}</div>
-        <div class="stat-label">Transcriptions</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-value">{{ stats.total_knowledge }}</div>
-        <div class="stat-label">Knowledge Items</div>
     </div>
 </div>
 
-<!-- Main Dashboard Grid -->
-<div class="dashboard-grid">
-    <!-- Questions by Topic -->
-    <div class="card">
-        <div class="card-header">
-            <h2>Questions by Topic</h2>
-            <a href="{{ url_for('solutions') }}" class="btn btn-sm">View All</a>
-        </div>
-        <div class="card-body">
-            {% if questions_by_topic %}
-            <div class="category-list">
-                {% for topic in questions_by_topic %}
-                <a href="{{ url_for('solutions', topic=topic.id) }}" class="category-item">
-                    <span>{{ topic.icon }} {{ topic.name }}</span>
-                    <span class="category-count">{{ topic.count }}</span>
-                </a>
-                {% endfor %}
-            </div>
-            {% else %}
-            <div class="empty-state">
-                <p>No questions yet</p>
-            </div>
-            {% endif %}
+<!-- Clusters Overview -->
+<div class="card">
+    <div class="card-header">
+        <h2>Clusters</h2>
+        <a href="{{ url_for('clusters') }}" class="btn btn-sm">View All</a>
+    </div>
+    <div class="card-body">
+        <div class="clusters-grid">
+            {% for cluster in clusters %}
+            <a href="{{ url_for('cluster_detail', cluster_id=cluster.id) }}" class="cluster-card" style="border-left-color: {{ cluster.color }}">
+                <div class="cluster-icon">{{ cluster.icon }}</div>
+                <div class="cluster-info">
+                    <div class="cluster-name">{{ cluster.name }}</div>
+                    <div class="cluster-stats">
+                        <span>{{ cluster.question_count }} questions</span>
+                        <span class="resolved">{{ cluster.resolved_count }} resolved</span>
+                    </div>
+                </div>
+            </a>
+            {% endfor %}
         </div>
     </div>
+</div>
 
+<div class="grid-2">
     <!-- Top Questions -->
     <div class="card">
         <div class="card-header">
-            <h2>Most Asked Questions</h2>
-            <a href="{{ url_for('solutions', sort='times_asked') }}" class="btn btn-sm">View All</a>
+            <h2>Top Questions</h2>
         </div>
         <div class="card-body">
             {% if top_questions %}
-            <div class="faq-list">
+            <ul class="question-list">
                 {% for q in top_questions %}
-                <div class="faq-item">
-                    <a href="{{ url_for('solution_detail', question_id=q.id) }}" class="faq-question">
-                        {{ q.canonical_text|truncate_text(80) }}
-                    </a>
-                    <div class="faq-meta">
-                        <span class="badge badge-type" style="background: {{ q.topic_color }}20; color: {{ q.topic_color }}">
-                            {{ q.topic_icon }} {{ q.topic_name }}
+                <li>
+                    <a href="{{ url_for('question_detail', question_id=q.id) }}">
+                        <span class="cluster-badge" style="background-color: {{ q.cluster_color }}">{{ q.cluster_icon }}</span>
+                        <span class="question-text">{{ q.canonical_text|truncate_text(60) }}</span>
+                        <span class="question-stats">
+                            <span class="times-asked">{{ q.times_asked }}x</span>
+                            <span class="status-badge status-{{ q.status }}">{{ q.status }}</span>
                         </span>
-                        <span class="times-asked">{{ q.times_asked }}x asked</span>
-                    </div>
-                </div>
+                    </a>
+                </li>
                 {% endfor %}
-            </div>
+            </ul>
             {% else %}
-            <div class="empty-state">
-                <p>No questions yet. Process some call transcriptions to generate questions.</p>
-            </div>
+            <p class="empty-state">No questions yet</p>
             {% endif %}
         </div>
     </div>
 
-    <!-- Recent Documents -->
+    <!-- Needs Work -->
     <div class="card">
         <div class="card-header">
-            <h2>Recent Documents</h2>
-            <a href="{{ url_for('documents') }}" class="btn btn-sm">View All</a>
+            <h2>Needs Work</h2>
+            <a href="{{ url_for('needs_work') }}" class="btn btn-sm">View All</a>
         </div>
         <div class="card-body">
-            {% if recent_docs %}
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>File</th>
-                        <th>Type</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for doc in recent_docs %}
-                    <tr>
-                        <td>
-                            <a href="{{ url_for('document_detail', doc_id=doc.id) }}">
-                                {{ doc.filename|truncate_text(30) }}
-                            </a>
-                        </td>
-                        <td><span class="badge badge-type">{{ doc_types.get(doc.type, doc.type) }}</span></td>
-                        <td><span class="badge badge-{{ doc.status }}">{{ doc.status }}</span></td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+            {% if needs_work %}
+            <ul class="question-list">
+                {% for q in needs_work %}
+                <li>
+                    <a href="{{ url_for('question_detail', question_id=q.id) }}">
+                        <span class="cluster-badge" style="background-color: {{ q.cluster_color }}">{{ q.cluster_icon }}</span>
+                        <span class="question-text">{{ q.canonical_text|truncate_text(60) }}</span>
+                        <span class="question-stats">
+                            <span class="times-asked">{{ q.times_asked }}x</span>
+                        </span>
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
             {% else %}
-            <div class="empty-state">
-                <p>No documents yet</p>
-            </div>
+            <p class="empty-state">No questions need work</p>
             {% endif %}
         </div>
     </div>
+</div>
 
-    <!-- Quick Search -->
-    <div class="card">
-        <div class="card-header">
-            <h2>Quick Search</h2>
-        </div>
-        <div class="card-body">
-            <form action="{{ url_for('search') }}" method="get">
-                <div class="search-box">
-                    <input type="text" name="q" class="search-input" placeholder="Search for solutions...">
-                </div>
-                <input type="hidden" name="type" value="semantic">
-                <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 0.5rem;">
-                    Semantic Search
-                </button>
-            </form>
-            <div style="margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
-                <p style="font-size: 0.85rem; color: #666; margin: 0;">
-                    Tip: Use natural language to describe the customer's problem.
-                    Our AI will find semantically similar questions.
-                </p>
-            </div>
-        </div>
+<!-- Recent Documents -->
+<div class="card">
+    <div class="card-header">
+        <h2>Recent Documents</h2>
+        <a href="{{ url_for('documents') }}" class="btn btn-sm">View All</a>
+    </div>
+    <div class="card-body">
+        {% if recent_docs %}
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Filename</th>
+                    <th>Status</th>
+                    <th>Processed</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for doc in recent_docs %}
+                <tr>
+                    <td><a href="{{ url_for('document_detail', doc_id=doc.id) }}">{{ doc.filename }}</a></td>
+                    <td><span class="badge badge-{{ doc.status }}">{{ doc.status }}</span></td>
+                    <td>{{ doc.processed_at|datetime }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="empty-state">No documents yet</p>
+        {% endif %}
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-let isProcessing = false;
-
-function updateStatus(message) {
-    document.getElementById('status-text').textContent = message;
-}
-
-function setButtonsDisabled(disabled) {
-    document.getElementById('scan-btn').disabled = disabled;
-    document.getElementById('process-btn').disabled = disabled;
-}
-
-function showProcessingBanner(show, text) {
-    const banner = document.getElementById('processing-banner');
-    const textEl = document.getElementById('processing-text');
-    banner.style.display = show ? 'block' : 'none';
-    if (text) textEl.textContent = text;
-}
-
-function scanFiles() {
-    setButtonsDisabled(true);
-    updateStatus('Scanning for new files...');
-
-    fetch('/api/scan', { method: 'POST' })
-        .then(r => r.json())
-        .then(data => {
-            if (data.error) {
-                updateStatus('Error: ' + data.error);
-            } else {
-                updateStatus('Found ' + data.new_files + ' new files. ' + data.pending + ' pending.');
-                document.getElementById('pending-count').textContent = data.pending;
-            }
-            setButtonsDisabled(false);
-        })
-        .catch(err => {
-            updateStatus('Scan failed: ' + err);
-            setButtonsDisabled(false);
-        });
-}
-
-function processAll() {
-    if (isProcessing) {
-        updateStatus('Processing already in progress...');
-        return;
-    }
-
-    isProcessing = true;
-    setButtonsDisabled(true);
-    showProcessingBanner(true, 'Processing documents...');
-    updateStatus('Processing all pending documents...');
+function scanAndProcess() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = 'Processing...';
 
     fetch('/api/process-all', { method: 'POST' })
-        .then(r => r.json())
+        .then(response => response.json())
         .then(data => {
-            isProcessing = false;
-            showProcessingBanner(false);
-            setButtonsDisabled(false);
-
             if (data.error) {
-                updateStatus('Error: ' + data.error);
-            } else if (data.message) {
-                updateStatus(data.message);
+                alert(data.error);
             } else {
-                updateStatus('Processed ' + data.processed + ' documents, ' + data.errors + ' errors.');
-                setTimeout(() => location.reload(), 1000);
+                alert(`Processed: ${data.processed}, Errors: ${data.errors}, New files: ${data.new_files}`);
+                location.reload();
             }
         })
-        .catch(err => {
-            isProcessing = false;
-            showProcessingBanner(false);
-            setButtonsDisabled(false);
-            updateStatus('Processing failed: ' + err);
+        .catch(err => alert('Error: ' + err))
+        .finally(() => {
+            btn.disabled = false;
+            btn.textContent = 'Scan & Process';
         });
 }
 </script>

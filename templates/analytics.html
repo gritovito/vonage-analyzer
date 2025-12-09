@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Analytics - Call Analyzer{% endblock %}
+{% block title %}Analytics - Knowledge Hub{% endblock %}
 
 {% block head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -25,17 +25,17 @@
         <div class="stat-value">{{ stats.resolved_count }}</div>
         <div class="stat-label">Resolved</div>
     </div>
-    <div class="stat-card stat-error">
-        <div class="stat-value">{{ stats.unresolved_count }}</div>
-        <div class="stat-label">Unresolved</div>
+    <div class="stat-card stat-warning">
+        <div class="stat-value">{{ stats.needs_work_count }}</div>
+        <div class="stat-label">Needs Work</div>
     </div>
     <div class="stat-card">
-        <div class="stat-value">{{ stats.total_transcriptions }}</div>
-        <div class="stat-label">Transcriptions</div>
+        <div class="stat-value">{{ stats.total_documents }}</div>
+        <div class="stat-label">Documents</div>
     </div>
     <div class="stat-card">
-        <div class="stat-value">{{ stats.total_knowledge }}</div>
-        <div class="stat-label">Knowledge Items</div>
+        <div class="stat-value">{{ stats.total_variants }}</div>
+        <div class="stat-label">Variants</div>
     </div>
 </div>
 
@@ -51,13 +51,13 @@
         </div>
     </div>
 
-    <!-- Questions by Topic -->
+    <!-- Questions by Cluster -->
     <div class="card">
         <div class="card-header">
-            <h2>Questions by Topic</h2>
+            <h2>Questions by Cluster</h2>
         </div>
         <div class="card-body">
-            <canvas id="topicChart"></canvas>
+            <canvas id="clusterChart"></canvas>
         </div>
     </div>
 </div>
@@ -152,26 +152,28 @@ new Chart(activityCtx, {
     }
 });
 
-// Topic Chart
-const topicData = {
-    {% for topic in questions_by_topic %}
-    '{{ topic.icon }} {{ topic.name }}': {{ topic.count }},
+// Cluster Chart
+const clusterData = {
+    {% for cluster in questions_by_cluster %}
+    '{{ cluster.icon }} {{ cluster.name }}': {{ cluster.count }},
     {% endfor %}
 };
 
-const topicCtx = document.getElementById('topicChart').getContext('2d');
-new Chart(topicCtx, {
+const clusterCtx = document.getElementById('clusterChart').getContext('2d');
+new Chart(clusterCtx, {
     type: 'doughnut',
     data: {
-        labels: Object.keys(topicData),
+        labels: Object.keys(clusterData),
         datasets: [{
-            data: Object.values(topicData),
+            data: Object.values(clusterData),
             backgroundColor: [
-                '#e74c3c',
+                '#9b59b6',
                 '#3498db',
                 '#2ecc71',
-                '#9b59b6',
+                '#e74c3c',
                 '#f39c12',
+                '#1abc9c',
+                '#e67e22',
                 '#95a5a6'
             ]
         }]

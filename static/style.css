@@ -1262,3 +1262,161 @@ a:hover {
     color: #666;
     margin-bottom: 1.5rem;
 }
+
+/* ==================== KNOWLEDGE HUB STYLES ==================== */
+
+/* Header Actions */
+.header-actions {
+    display: flex;
+    gap: 1rem;
+}
+
+/* Clusters Grid */
+.clusters-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+}
+
+.cluster-card {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    background: white;
+    border-radius: 8px;
+    border-left: 4px solid;
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.cluster-card:hover {
+    transform: translateX(4px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    text-decoration: none;
+}
+
+.cluster-icon {
+    font-size: 1.5rem;
+}
+
+.cluster-info {
+    flex: 1;
+}
+
+.cluster-name {
+    font-weight: 600;
+    color: #333;
+}
+
+.cluster-stats {
+    font-size: 0.85rem;
+    color: #888;
+    display: flex;
+    gap: 1rem;
+}
+
+.cluster-stats .resolved {
+    color: #28a745;
+}
+
+/* Grid 2 columns */
+.grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+}
+
+@media (max-width: 900px) {
+    .grid-2 {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Question List */
+.question-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.question-list li {
+    margin-bottom: 0.5rem;
+}
+
+.question-list li a {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: #f8f9fa;
+    border-radius: 6px;
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.2s;
+}
+
+.question-list li a:hover {
+    background: #e9ecef;
+}
+
+.cluster-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.3rem 0.5rem;
+    border-radius: 4px;
+    color: white;
+    font-size: 0.85rem;
+    min-width: 30px;
+}
+
+.question-text {
+    flex: 1;
+    color: #333;
+}
+
+.question-stats {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.85rem;
+}
+
+.times-asked {
+    background: #e8f4fd;
+    color: #4a90d9;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+}
+
+/* Status Badges */
+.status-badge {
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: capitalize;
+}
+
+.status-resolved {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-needs_work {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.status-no_answer {
+    background: #e9ecef;
+    color: #495057;
+}
+
+/* Stat Card Warning Color */
+.stat-card.stat-warning .stat-value {
+    color: #ffc107;
+}

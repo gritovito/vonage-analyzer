@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Upload - Call Analyzer{% endblock %}
+{% block title %}Upload - Knowledge Hub{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -17,14 +17,12 @@
                 <div class="form-group">
                     <label for="doc_type">Document Type:</label>
                     <select name="doc_type" id="doc_type" required>
-                        <option value="knowledge_base">Knowledge Base (for onboarding)</option>
                         <option value="manual_faq">FAQ Document</option>
-                        <option value="manual_instruction">Instruction / Script</option>
+                        <option value="transcription">Call Transcription</option>
                     </select>
                     <small class="help-text">
-                        <strong>Knowledge Base:</strong> Training materials, product info for new employees<br>
-                        <strong>FAQ Document:</strong> Question-answer pairs that will be extracted into Solutions<br>
-                        <strong>Instruction:</strong> Operator scripts, procedures, guidelines
+                        <strong>FAQ Document:</strong> Question-answer pairs will be extracted and added to clusters<br>
+                        <strong>Call Transcription:</strong> Will be analyzed to extract questions and answers
                     </small>
                 </div>
 
@@ -57,16 +55,12 @@
         <div class="card-body">
             <div class="tips">
                 <div class="tip">
-                    <h3>Knowledge Base</h3>
-                    <p>Upload product manuals, training documents, or reference materials. These will be stored for onboarding and reference purposes.</p>
-                </div>
-                <div class="tip">
                     <h3>FAQ Documents</h3>
-                    <p>Format your FAQ with clear question-answer pairs. Use markers like "Q:" and "A:" or numbered questions. These will be added to the Solutions database with semantic matching.</p>
+                    <p>Format your FAQ with clear question-answer pairs. Use markers like "Q:" and "A:" or numbered questions. These will be added to the appropriate clusters with semantic matching.</p>
                 </div>
                 <div class="tip">
-                    <h3>Instructions</h3>
-                    <p>Include step-by-step procedures, rules, and guidelines. Use headers to separate different topics.</p>
+                    <h3>Call Transcriptions</h3>
+                    <p>Upload call transcriptions to extract customer questions and operator answers. The AI will categorize them into the correct clusters.</p>
                 </div>
                 <div class="tip">
                     <h3>Text Format</h3>

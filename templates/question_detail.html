@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+
+{% block title %}{{ question.canonical_text|truncate_text(50) }} - Knowledge Hub{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div>
+        <a href="{{ url_for('cluster_detail', cluster_id=question.cluster_id) }}" class="btn btn-sm">&laquo; Back to {{ question.cluster_name }}</a>
+        <h1 style="margin-top: 1rem;">{{ question.canonical_text }}</h1>
+    </div>
+</div>
+
+<!-- Question Info -->
+<div class="card">
+    <div class="card-header">
+        <h2>Question Details</h2>
+        <div class="question-meta">
+            <span class="cluster-badge" style="background-color: {{ question.cluster_color }}">
+                {{ question.cluster_icon }} {{ question.cluster_name }}
+            </span>
+            <span class="times-asked">Asked {{ question.times_asked }} times</span>
+            <span class="status-badge status-{{ question.status }}">{{ question.status }}</span>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if variants %}
+        <div class="variants-section">
+            <h4>Alternative Phrasings ({{ variants|length }}):</h4>
+            <ul class="variants-list">
+                {% for v in variants %}
+                <li>{{ v.variant_text }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Answers -->
+<div class="card">
+    <div class="card-header">
+        <h2>Answers ({{ answers|length }})</h2>
+    </div>
+    <div class="card-body">
+        {% if answers %}
+        <div class="answers-list">
+            {% for answer in answers %}
+            <div class="answer-card {% if answer.is_best %}best{% endif %}">
+                {% if answer.is_best %}
+                <div class="best-badge">Best Answer</div>
+                {% endif %}
+
+                <div class="answer-content">
+                    {{ answer.answer_text }}
+                </div>
+
+                <div class="answer-footer">
+                    <div class="answer-stats">
+                        <span class="effectiveness" title="Effectiveness score">
+                            {% if answer.effectiveness_percent >= 70 %}
+                            <span style="color: #28a745;">{{ answer.effectiveness_percent|round(0)|int }}%</span>
+                            {% elif answer.effectiveness_percent >= 40 %}
+                            <span style="color: #ffc107;">{{ answer.effectiveness_percent|round(0)|int }}%</span>
+                            {% else %}
+                            <span style="color: #dc3545;">{{ answer.effectiveness_percent|round(0)|int }}%</span>
+                            {% endif %}
+                            effective
+                        </span>
+                        <span class="vote-info">
+                            {{ answer.success_count }} helpful / {{ answer.fail_count }} not helpful
+                        </span>
+                    </div>
+
+                    <div class="answer-source">
+                        {% if answer.source_filename %}
+                        Source: {{ answer.source_filename }}
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Feedback Buttons -->
+                <div class="feedback-buttons">
+                    <span>Was this helpful?</span>
+                    <button class="btn btn-sm btn-success" onclick="submitFeedback({{ answer.id }}, true)">
+                        Yes
+                    </button>
+                    <button class="btn btn-sm" onclick="submitFeedback({{ answer.id }}, false)">
+                        No
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <p>No answers yet for this question.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block head %}
+<style>
+.question-meta {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.cluster-badge {
+    padding: 0.4rem 0.8rem;
+    border-radius: 4px;
+    color: white;
+    font-size: 0.9rem;
+}
+
+.variants-section {
+    margin-top: 1rem;
+}
+
+.variants-section h4 {
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 0.5rem;
+}
+
+.variants-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.variants-list li {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #eee;
+    color: #555;
+    font-style: italic;
+}
+
+.variants-list li:last-child {
+    border-bottom: none;
+}
+
+.answers-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.answer-card {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 1.5rem;
+    position: relative;
+}
+
+.answer-card.best {
+    background: #e8f5e9;
+    border: 2px solid #4caf50;
+}
+
+.best-badge {
+    position: absolute;
+    top: -10px;
+    right: 20px;
+    background: #4caf50;
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+.answer-content {
+    font-size: 1rem;
+    line-height: 1.6;
+    color: #333;
+    margin-bottom: 1rem;
+    white-space: pre-wrap;
+}
+
+.answer-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 1rem;
+    border-top: 1px solid #ddd;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.answer-stats {
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+}
+
+.effectiveness {
+    font-weight: bold;
+}
+
+.vote-info {
+    color: #888;
+    font-size: 0.85rem;
+}
+
+.answer-source {
+    color: #888;
+    font-size: 0.85rem;
+}
+
+.feedback-buttons {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #ddd;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: #666;
+    font-size: 0.9rem;
+}
+
+.status-badge {
+    padding: 0.3rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+.status-resolved { background: #d4edda; color: #155724; }
+.status-needs_work { background: #fff3cd; color: #856404; }
+.status-no_answer { background: #e9ecef; color: #495057; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function submitFeedback(answerId, helpful) {
+    fetch('/api/answer/' + answerId + '/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ helpful: helpful })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert('Thank you for your feedback!');
+            location.reload();
+        }
+    });
+}
+</script>
+{% endblock %}
