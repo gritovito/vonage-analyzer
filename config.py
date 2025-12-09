@@ -43,7 +43,74 @@ CLUSTERS = [
     "General Inquiry"
 ]
 
-# Analysis prompt for GPT
+# Stage 1: Classification prompt
+CLASSIFICATION_PROMPT = """Analyze this customer support call transcript.
+
+Extract:
+1. CLUSTER: Category [Messaging, Calls & Voice, Data & Internet, Device Issues, Apps & Software, Account & Billing, Store & Service, General Inquiry]
+2. CUSTOMER_QUESTION: The main question/problem (generalized, no specific names/numbers)
+
+Return JSON only (no markdown):
+{
+  "cluster": "category",
+  "question": "generalized customer question"
+}
+
+TRANSCRIPTION:
+"""
+
+# Stage 2: Script extraction prompt
+SCRIPT_EXTRACTION_PROMPT = """You are analyzing a customer support call transcript.
+
+Your task: Extract the EXACT helpful responses and instructions that the operator gave to the customer.
+
+IMPORTANT RULES:
+1. Extract ACTUAL phrases the operator said - NOT a summary or description
+2. Include step-by-step instructions exactly as given
+3. Keep specific details (menu names, settings, button names)
+4. Preserve the natural conversational tone
+5. Each script must be READY TO COPY AND USE by another operator
+6. Do NOT write "The operator explained..." - write the actual response
+7. Combine related instructions into complete scripts (don't split mid-instruction)
+
+For each helpful response found, extract:
+{
+  "scripts": [
+    {
+      "text": "The exact operator response - copy-paste ready for reuse",
+      "type": "instruction|explanation|promise|apology|info",
+      "has_steps": true/false,
+      "resolved_issue": true/false
+    }
+  ],
+  "customer_satisfied": true/false
+}
+
+EXAMPLE:
+Transcript: "Customer: My messages are coming late. Operator: I can help with that. Please go to your Settings, then tap Apps, find Messages and tap Clear Storage. That should fix the delay."
+
+Good output:
+{
+  "scripts": [{
+    "text": "I can help with that. Please go to your Settings, then tap Apps, find Messages and tap Clear Storage. That should fix the delay.",
+    "type": "instruction",
+    "has_steps": true,
+    "resolved_issue": true
+  }],
+  "customer_satisfied": true
+}
+
+BAD output (don't do this):
+{
+  "scripts": [{
+    "text": "The operator explained how to clear storage in settings."
+  }]
+}
+
+TRANSCRIPTION:
+"""
+
+# Legacy prompt (kept for compatibility)
 ANALYSIS_PROMPT = """Analyze this customer support call transcription.
 
 Determine:

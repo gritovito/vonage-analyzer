@@ -1,13 +1,16 @@
 """
-Knowledge Hub Analyzer Module
+Knowledge Hub Analyzer Module v3 - Response Scripts Library
 Processes call transcriptions using OpenAI GPT-4o-mini
-Extracts cluster, question, answer with semantic matching
+Two-stage processing: Classification + Script Extraction
 """
 import json
 import logging
 import time
 from openai import OpenAI
-from config import OPENAI_API_KEY, OPENAI_MODEL, ANALYSIS_PROMPT, CLUSTERS
+from config import (
+    OPENAI_API_KEY, OPENAI_MODEL, CLUSTERS,
+    CLASSIFICATION_PROMPT, SCRIPT_EXTRACTION_PROMPT, ANALYSIS_PROMPT
+)
 import database as db
 import embeddings
 
@@ -26,9 +29,92 @@ else:
     logger.warning("OpenAI API key not set! Analysis will not work.")
 
 
+def _clean_json_response(result_text):
+    """Clean up JSON response from OpenAI"""
+    if result_text.startswith("```"):
+        lines = result_text.split("\n")
+        lines = [l for l in lines if not l.strip().startswith("```")]
+        result_text = "\n".join(lines).strip()
+    return result_text
+
+
+def analyze_classification(content):
+    """
+    Stage 1: Classify the transcript - extract cluster and question
+    """
+    if not client:
+        logger.error("OpenAI client not initialized - API key missing")
+        return None
+
+    try:
+        response = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an expert at analyzing customer support phone call transcriptions. Extract structured information. Respond only with valid JSON without markdown formatting. Always respond in English."
+                },
+                {
+                    "role": "user",
+                    "content": CLASSIFICATION_PROMPT + "\n\n" + content
+                }
+            ],
+            temperature=0.1,
+            max_tokens=500
+        )
+
+        result_text = _clean_json_response(response.choices[0].message.content.strip())
+        result = json.loads(result_text)
+        return result
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Classification: Failed to parse JSON: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Classification API error: {e}")
+        return None
+
+
+def extract_scripts(content):
+    """
+    Stage 2: Extract actual operator scripts from the transcript
+    """
+    if not client:
+        logger.error("OpenAI client not initialized - API key missing")
+        return None
+
+    try:
+        response = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an expert at extracting operator responses from customer support call transcriptions. Extract the EXACT phrases operators use - ready for copy-paste reuse. Respond only with valid JSON without markdown. Always respond in English."
+                },
+                {
+                    "role": "user",
+                    "content": SCRIPT_EXTRACTION_PROMPT + "\n\n" + content
+                }
+            ],
+            temperature=0.1,
+            max_tokens=2000
+        )
+
+        result_text = _clean_json_response(response.choices[0].message.content.strip())
+        result = json.loads(result_text)
+        return result
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Script extraction: Failed to parse JSON: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Script extraction API error: {e}")
+        return None
+
+
 def analyze_transcription(content):
     """
-    Analyze transcription content using OpenAI
+    Legacy single-pass analysis (kept for compatibility)
     Returns structured JSON with cluster, question, answer, resolution, satisfaction
     """
     if not client:
@@ -52,21 +138,12 @@ def analyze_transcription(content):
             max_tokens=2000
         )
 
-        result_text = response.choices[0].message.content.strip()
-
-        # Clean up response if it has markdown code blocks
-        if result_text.startswith("```"):
-            lines = result_text.split("\n")
-            lines = [l for l in lines if not l.strip().startswith("```")]
-            result_text = "\n".join(lines).strip()
-
-        # Parse JSON
+        result_text = _clean_json_response(response.choices[0].message.content.strip())
         result = json.loads(result_text)
         return result
 
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse OpenAI response as JSON: {e}")
-        logger.error(f"Response was: {result_text[:500]}")
         return None
     except Exception as e:
         logger.error(f"OpenAI API error: {e}")
@@ -75,8 +152,9 @@ def analyze_transcription(content):
 
 def process_document(doc_id):
     """
-    Process a single document: analyze and extract questions/answers
-    Uses semantic matching to merge similar questions into clusters
+    Process a single document with two-stage analysis:
+    Stage 1: Classification (cluster + question)
+    Stage 2: Script extraction (actual operator responses)
     """
     doc = db.get_document(doc_id)
     if not doc:
@@ -95,25 +173,18 @@ def process_document(doc_id):
 
     logger.info(f"Processing document {doc_id}: {doc['filename']}")
 
-    # Analyze with OpenAI
-    analysis = analyze_transcription(content)
-    if not analysis:
-        db.update_document_status(doc_id, 'error', 'OpenAI analysis failed')
+    # Stage 1: Classification
+    classification = analyze_classification(content)
+    if not classification:
+        db.update_document_status(doc_id, 'error', 'Classification failed')
         return False
 
-    # Store analysis result
-    db.update_document_status(doc_id, 'processing', analysis_result=json.dumps(analysis))
+    cluster_name = classification.get('cluster', 'General Inquiry')
+    question_text = classification.get('question', '')
 
-    # Extract data from analysis (new format)
-    cluster_name = analysis.get('cluster', 'General Inquiry')
-    question_text = analysis.get('question', '')
-    answer_text = analysis.get('answer', '')
-    resolution = analysis.get('resolution', 'unknown')
-    satisfaction = analysis.get('satisfaction', 'neutral')
-
-    if not question_text or not answer_text:
-        logger.warning(f"Document {doc_id}: No question or answer extracted")
-        db.update_document_status(doc_id, 'processed', analysis_result=json.dumps(analysis))
+    if not question_text:
+        logger.warning(f"Document {doc_id}: No question extracted")
+        db.update_document_status(doc_id, 'processed', analysis_result=json.dumps(classification))
         db.update_daily_summary(calls=1)
         return True
 
@@ -124,63 +195,83 @@ def process_document(doc_id):
     # Get cluster ID
     cluster = db.get_cluster_by_name(cluster_name)
     if not cluster:
-        # Fallback to General Inquiry
         cluster = db.get_cluster_by_name('General Inquiry')
     cluster_id = cluster['id'] if cluster else 1
 
-    # Find similar existing question using semantic matching
+    # Find or create question using semantic matching
     match_result = embeddings.find_similar_question(question_text)
-
     new_question = False
-    resolved = 1 if resolution == 'resolved' else 0
-    unresolved = 1 if resolution == 'unresolved' else 0
 
     if match_result and match_result.get('question_id'):
-        # Found similar question - add variant and new answer
         question_id = match_result['question_id']
         similarity = match_result['similarity']
-
         logger.info(f"Found similar question (id={question_id}, similarity={similarity:.2%})")
-
-        # Add this question as a variant phrasing
         db.add_question_variant(question_id, question_text, doc_id)
-
-        # Increment times_asked
         db.increment_question_asked(question_id)
-
     else:
-        # No similar question found - create new one
         embedding = match_result.get('embedding') if match_result else None
-
         question_id = db.add_question(cluster_id, question_text, embedding)
         new_question = True
-
         logger.info(f"Created new question (id={question_id}) in cluster '{cluster_name}'")
 
-    # Add the answer with effectiveness tracking
-    answer_id = db.add_answer(
-        question_id=question_id,
-        answer_text=answer_text,
-        source_document_id=doc_id,
-        resolution_status=resolution,
-        customer_satisfaction=satisfaction
-    )
+    # Stage 2: Script extraction
+    extraction = extract_scripts(content)
+    scripts_added = 0
 
-    logger.info(f"Added answer (id={answer_id}) for question {question_id}")
+    if extraction and extraction.get('scripts'):
+        customer_satisfied = extraction.get('customer_satisfied', False)
 
-    # Update document status
-    db.update_document_status(doc_id, 'processed', analysis_result=json.dumps(analysis))
+        for script_data in extraction['scripts']:
+            script_text = script_data.get('text', '').strip()
+            if not script_text or len(script_text) < 10:
+                continue  # Skip empty or too short scripts
+
+            script_type = script_data.get('type', 'instruction')
+            has_steps = script_data.get('has_steps', False)
+            resolved = script_data.get('resolved_issue', customer_satisfied)
+
+            # Check for duplicate script
+            existing_script = db.find_similar_script(question_id, script_text)
+
+            if existing_script:
+                # Update existing script's count
+                db.update_script_count(existing_script, resolved)
+                logger.info(f"Updated existing script (id={existing_script})")
+            else:
+                # Add new script
+                script_id = db.add_script(
+                    question_id=question_id,
+                    script_text=script_text,
+                    script_type=script_type,
+                    has_steps=has_steps,
+                    resolved=resolved,
+                    source_doc_id=doc_id
+                )
+                scripts_added += 1
+                logger.info(f"Added new script (id={script_id}) for question {question_id}")
+
+        # Recalculate best script
+        db.recalculate_best_script(question_id)
+
+    # Store combined analysis result
+    combined_analysis = {
+        'classification': classification,
+        'extraction': extraction,
+        'scripts_added': scripts_added
+    }
+    db.update_document_status(doc_id, 'processed', analysis_result=json.dumps(combined_analysis))
 
     # Update daily summary
+    resolved_count = 1 if extraction and extraction.get('customer_satisfied') else 0
     db.update_daily_summary(
         calls=1,
         questions=1 if new_question else 0,
-        answers=1,
-        resolved=resolved,
-        unresolved=unresolved
+        answers=scripts_added,
+        resolved=resolved_count,
+        unresolved=1 - resolved_count
     )
 
-    logger.info(f"Document {doc_id} processed successfully")
+    logger.info(f"Document {doc_id} processed: {scripts_added} scripts extracted")
     return True
 
 

@@ -1,6 +1,6 @@
 """
-Knowledge Hub Database - Clustered Q&A System
-SQLite database with semantic clustering and answer effectiveness tracking
+Knowledge Hub Database - Response Scripts Library (v3)
+SQLite database with semantic clustering and operator script extraction
 """
 import sqlite3
 import os
@@ -99,7 +99,7 @@ def init_db():
             )
         """)
 
-        # Answers table - with effectiveness tracking
+        # Answers table - with effectiveness tracking (legacy, kept for compatibility)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS answers (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -110,6 +110,25 @@ def init_db():
                 fail_count INTEGER DEFAULT 0,
                 effectiveness_percent REAL DEFAULT 0.0,
                 is_best BOOLEAN DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (question_id) REFERENCES questions(id),
+                FOREIGN KEY (source_document_id) REFERENCES documents(id)
+            )
+        """)
+
+        # Scripts table - ready-to-use operator response scripts (v3)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS scripts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                question_id INTEGER NOT NULL,
+                script_text TEXT NOT NULL,
+                script_type TEXT DEFAULT 'instruction',
+                has_steps BOOLEAN DEFAULT 0,
+                success_count INTEGER DEFAULT 0,
+                fail_count INTEGER DEFAULT 0,
+                effectiveness REAL DEFAULT 50.0,
+                is_best BOOLEAN DEFAULT 0,
+                source_document_id INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (question_id) REFERENCES questions(id),
                 FOREIGN KEY (source_document_id) REFERENCES documents(id)
@@ -151,6 +170,9 @@ def init_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_answers_effectiveness ON answers(effectiveness_percent DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_variants_question ON question_variants(question_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_scripts_question ON scripts(question_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_scripts_effectiveness ON scripts(effectiveness DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_scripts_is_best ON scripts(is_best)")
 
         # Insert default clusters
         default_clusters = [
@@ -527,6 +549,209 @@ def update_answer_feedback(answer_id, helpful):
             _update_best_answer(cursor, row['question_id'])
 
 
+# ==================== SCRIPT OPERATIONS (v3) ====================
+
+def add_script(question_id, script_text, script_type='instruction', has_steps=False, resolved=True, source_doc_id=None):
+    """Add a new script for a question"""
+    # Calculate initial effectiveness based on resolution
+    effectiveness = 70.0 if resolved else 30.0
+    if has_steps:
+        effectiveness += 10
+    if script_type == 'instruction':
+        effectiveness += 5
+    effectiveness = min(effectiveness, 100.0)
+
+    success = 1 if resolved else 0
+    fail = 0 if resolved else 1
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO scripts (question_id, script_text, script_type, has_steps,
+                                success_count, fail_count, effectiveness, source_document_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (question_id, script_text, script_type, has_steps, success, fail, effectiveness, source_doc_id))
+        script_id = cursor.lastrowid
+
+        # Update best script
+        _update_best_script(cursor, question_id)
+
+        return script_id
+
+
+def get_scripts(question_id):
+    """Get all scripts for a question, best first"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT s.*, d.filename as source_filename
+            FROM scripts s
+            LEFT JOIN documents d ON s.source_document_id = d.id
+            WHERE s.question_id = ?
+            ORDER BY s.is_best DESC, s.effectiveness DESC
+        """, (question_id,))
+        return cursor.fetchall()
+
+
+def get_best_script(question_id):
+    """Get the best script for a question"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT s.*, d.filename as source_filename
+            FROM scripts s
+            LEFT JOIN documents d ON s.source_document_id = d.id
+            WHERE s.question_id = ? AND s.is_best = 1
+        """, (question_id,))
+        return cursor.fetchone()
+
+
+def get_script(script_id):
+    """Get a single script by ID"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT s.*, d.filename as source_filename
+            FROM scripts s
+            LEFT JOIN documents d ON s.source_document_id = d.id
+            WHERE s.id = ?
+        """, (script_id,))
+        return cursor.fetchone()
+
+
+def find_similar_script(question_id, script_text, similarity_threshold=0.9):
+    """Find if a similar script already exists for this question"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, script_text, success_count, fail_count FROM scripts
+            WHERE question_id = ?
+        """, (question_id,))
+
+        # Simple text similarity - check if normalized texts match
+        normalized_new = script_text.lower().strip()
+        for row in cursor.fetchall():
+            normalized_existing = row['script_text'].lower().strip()
+            # Check exact match or high similarity
+            if normalized_new == normalized_existing:
+                return row['id']
+            # Check if one contains the other (for very similar scripts)
+            if len(normalized_new) > 50 and len(normalized_existing) > 50:
+                shorter = min(normalized_new, normalized_existing, key=len)
+                longer = max(normalized_new, normalized_existing, key=len)
+                if shorter in longer or (len(set(shorter.split()) & set(longer.split())) / len(set(shorter.split())) > similarity_threshold):
+                    return row['id']
+        return None
+
+
+def update_script_count(script_id, resolved):
+    """Update script success/fail count"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        if resolved:
+            cursor.execute("UPDATE scripts SET success_count = success_count + 1 WHERE id = ?", (script_id,))
+        else:
+            cursor.execute("UPDATE scripts SET fail_count = fail_count + 1 WHERE id = ?", (script_id,))
+
+        _update_script_effectiveness(cursor, script_id)
+
+        # Get question_id and update best
+        cursor.execute("SELECT question_id FROM scripts WHERE id = ?", (script_id,))
+        row = cursor.fetchone()
+        if row:
+            _update_best_script(cursor, row['question_id'])
+
+
+def update_script_feedback(script_id, helpful):
+    """Update script based on user feedback"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        if helpful:
+            cursor.execute("UPDATE scripts SET success_count = success_count + 1 WHERE id = ?", (script_id,))
+        else:
+            cursor.execute("UPDATE scripts SET fail_count = fail_count + 1 WHERE id = ?", (script_id,))
+
+        _update_script_effectiveness(cursor, script_id)
+
+        # Get question_id and update best script
+        cursor.execute("SELECT question_id FROM scripts WHERE id = ?", (script_id,))
+        row = cursor.fetchone()
+        if row:
+            _update_best_script(cursor, row['question_id'])
+
+
+def _update_script_effectiveness(cursor, script_id):
+    """Calculate effectiveness for a script"""
+    cursor.execute("SELECT success_count, fail_count, has_steps, script_type FROM scripts WHERE id = ?", (script_id,))
+    row = cursor.fetchone()
+    if row:
+        total = row['success_count'] + row['fail_count']
+        if total > 0:
+            base = (row['success_count'] / total) * 100
+        else:
+            base = 50.0
+
+        # Bonuses
+        if row['has_steps']:
+            base += 10
+        if row['script_type'] == 'instruction':
+            base += 5
+
+        effectiveness = min(base, 100.0)
+        cursor.execute("UPDATE scripts SET effectiveness = ? WHERE id = ?", (effectiveness, script_id))
+
+
+def _update_best_script(cursor, question_id):
+    """Update best script and question status"""
+    # Reset all is_best for this question
+    cursor.execute("UPDATE scripts SET is_best = 0 WHERE question_id = ?", (question_id,))
+
+    # Find best script
+    cursor.execute("""
+        SELECT id, effectiveness FROM scripts
+        WHERE question_id = ?
+        ORDER BY effectiveness DESC, success_count DESC
+        LIMIT 1
+    """, (question_id,))
+    best = cursor.fetchone()
+
+    if best:
+        cursor.execute("UPDATE scripts SET is_best = 1 WHERE id = ?", (best['id'],))
+
+        # Update question status based on effectiveness
+        if best['effectiveness'] >= 70:
+            status = 'resolved'
+        elif best['effectiveness'] > 0:
+            status = 'needs_work'
+        else:
+            status = 'no_answer'
+
+        cursor.execute("UPDATE questions SET status = ?, best_answer_id = ? WHERE id = ?",
+                      (status, best['id'], question_id))
+    else:
+        cursor.execute("UPDATE questions SET status = 'no_answer', best_answer_id = NULL WHERE id = ?",
+                      (question_id,))
+
+
+def recalculate_best_script(question_id):
+    """Recalculate best script for a question (public function)"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        _update_best_script(cursor, question_id)
+
+
+def get_scripts_count(question_id=None):
+    """Get count of scripts"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        if question_id:
+            cursor.execute("SELECT COUNT(*) FROM scripts WHERE question_id = ?", (question_id,))
+        else:
+            cursor.execute("SELECT COUNT(*) FROM scripts")
+        return cursor.fetchone()[0]
+
+
 # ==================== DOCUMENT OPERATIONS ====================
 
 def add_document(filename, content=None, status="pending"):
@@ -628,6 +853,9 @@ def get_stats():
         cursor.execute("SELECT COUNT(*) FROM answers")
         stats['total_answers'] = cursor.fetchone()[0]
 
+        cursor.execute("SELECT COUNT(*) FROM scripts")
+        stats['total_scripts'] = cursor.fetchone()[0]
+
         cursor.execute("SELECT COUNT(*) FROM questions WHERE status = 'resolved'")
         stats['resolved_count'] = cursor.fetchone()[0]
 
@@ -648,6 +876,11 @@ def get_stats():
 
         cursor.execute("SELECT COUNT(*) FROM question_variants")
         stats['total_variants'] = cursor.fetchone()[0]
+
+        # Scripts stats
+        cursor.execute("SELECT AVG(effectiveness) FROM scripts WHERE is_best = 1")
+        avg_eff = cursor.fetchone()[0]
+        stats['avg_script_effectiveness'] = round(avg_eff, 1) if avg_eff else 0
 
         return stats
 

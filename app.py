@@ -177,19 +177,36 @@ def cluster_detail(cluster_id):
 
 @app.route('/question/<int:question_id>')
 def question_detail(question_id):
-    """View single question with all answers"""
+    """View single question with all scripts"""
     question = db.get_question(question_id)
     if not question:
         flash('Question not found', 'error')
         return redirect(url_for('index'))
 
-    answers = db.get_answers(question_id)
+    # Get scripts (v3) - primary
+    scripts = db.get_scripts(question_id)
+    best_script = None
+    other_scripts = []
+
+    for s in scripts:
+        if s['is_best']:
+            best_script = s
+        else:
+            other_scripts.append(s)
+
+    # Get variants
     variants = db.get_question_variants(question_id)
+
+    # Legacy answers (for compatibility)
+    answers = db.get_answers(question_id)
 
     return render_template('question_detail.html',
                            question=question,
-                           answers=answers,
-                           variants=variants)
+                           best_script=best_script,
+                           other_scripts=other_scripts,
+                           scripts=scripts,
+                           variants=variants,
+                           answers=answers)
 
 
 @app.route('/search')
@@ -462,13 +479,47 @@ def api_question_answers(question_id):
 
 @app.route('/api/answer/<int:answer_id>/feedback', methods=['POST'])
 def api_answer_feedback(answer_id):
-    """Submit feedback for an answer"""
+    """Submit feedback for an answer (legacy)"""
     data = request.get_json()
     helpful = data.get('helpful', False)
 
     db.update_answer_feedback(answer_id, helpful)
 
     return jsonify({'success': True})
+
+
+# ==================== SCRIPT API ENDPOINTS (v3) ====================
+
+@app.route('/api/script/<int:script_id>/feedback', methods=['POST'])
+def api_script_feedback(script_id):
+    """Submit feedback for a script"""
+    data = request.get_json()
+    helpful = data.get('helpful', False)
+
+    db.update_script_feedback(script_id, helpful)
+
+    return jsonify({'success': True})
+
+
+@app.route('/api/script/<int:script_id>/copy')
+def api_script_copy(script_id):
+    """Get script text for copying (also tracks analytics)"""
+    script = db.get_script(script_id)
+    if not script:
+        return jsonify({'error': 'Script not found'}), 404
+
+    return jsonify({
+        'text': script['script_text'],
+        'type': script['script_type'],
+        'has_steps': bool(script['has_steps'])
+    })
+
+
+@app.route('/api/question/<int:question_id>/scripts')
+def api_question_scripts(question_id):
+    """Get all scripts for a question"""
+    scripts = db.get_scripts(question_id)
+    return jsonify([dict(s) for s in scripts])
 
 
 @app.route('/api/reprocess', methods=['POST'])

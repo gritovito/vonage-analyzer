@@ -1420,3 +1420,215 @@ a:hover {
 .stat-card.stat-warning .stat-value {
     color: #ffc107;
 }
+
+/* ==================== V3 SCRIPT STYLES ==================== */
+
+/* Script Cards */
+.script-card {
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 12px 0;
+    position: relative;
+}
+
+.script-card.best {
+    background: #d4edda;
+    border-color: #28a745;
+    border-width: 2px;
+}
+
+.script-card .best-badge {
+    color: #28a745;
+    font-weight: bold;
+    margin-bottom: 12px;
+    font-size: 1rem;
+    position: static;
+    background: none;
+    padding: 0;
+}
+
+.effectiveness-badge {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    background: #6c757d;
+    color: white;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: bold;
+}
+
+.script-text {
+    font-size: 16px;
+    line-height: 1.6;
+    padding: 16px;
+    background: white;
+    border-radius: 6px;
+    margin: 8px 0;
+    white-space: pre-wrap;
+    border: 1px solid #e9ecef;
+}
+
+.script-card.best .script-text {
+    background: #f8fff8;
+    border-color: #c3e6cb;
+}
+
+.script-meta {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 12px;
+    font-size: 0.85rem;
+}
+
+.script-type {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+    text-transform: capitalize;
+}
+
+.type-instruction { background: #cce5ff; color: #004085; }
+.type-explanation { background: #d4edda; color: #155724; }
+.type-promise { background: #fff3cd; color: #856404; }
+.type-apology { background: #f8d7da; color: #721c24; }
+.type-info { background: #e2e3e5; color: #383d41; }
+
+.has-steps {
+    color: #28a745;
+    font-weight: 500;
+}
+
+.script-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid #dee2e6;
+}
+
+.btn-copy {
+    background: #007bff;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.btn-copy:hover {
+    background: #0056b3;
+}
+
+.btn-up {
+    background: #28a745;
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    transition: all 0.2s;
+}
+
+.btn-up:hover {
+    background: #1e7e34;
+}
+
+.btn-down {
+    background: #dc3545;
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    transition: all 0.2s;
+}
+
+.btn-down:hover {
+    background: #c82333;
+}
+
+/* Best Script Preview in Search */
+.best-script-preview {
+    background: #f0fff0;
+    border: 1px solid #c3e6cb;
+    border-radius: 8px;
+    padding: 12px;
+    margin-top: 12px;
+}
+
+.script-preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.best-label {
+    color: #28a745;
+    font-weight: bold;
+    font-size: 0.85rem;
+}
+
+.btn-copy-small {
+    background: #007bff;
+    color: white;
+    border: none;
+    padding: 6px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.btn-copy-small:hover {
+    background: #0056b3;
+}
+
+.script-preview-text {
+    color: #333;
+    line-height: 1.5;
+    font-size: 0.95rem;
+    white-space: pre-wrap;
+}
+
+.script-count {
+    color: #28a745;
+    font-weight: 500;
+    font-size: 0.85rem;
+}
+
+/* Toast notification */
+.toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 1000;
+}
+
+.toast.show {
+    opacity: 1;
+}
+
+/* Scripts stat card */
+.stat-card.stat-scripts .stat-value {
+    color: #007bff;
+}

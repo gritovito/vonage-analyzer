@@ -25,10 +25,10 @@
     <div class="card-body">
         {% if variants %}
         <div class="variants-section">
-            <h4>Alternative Phrasings ({{ variants|length }}):</h4>
+            <h4>How customers ask this ({{ variants|length }} variations):</h4>
             <ul class="variants-list">
                 {% for v in variants %}
-                <li>{{ v.variant_text }}</li>
+                <li>"{{ v.variant_text }}"</li>
                 {% endfor %}
             </ul>
         </div>
@@ -36,68 +36,88 @@
     </div>
 </div>
 
-<!-- Answers -->
+<!-- Response Scripts -->
 <div class="card">
     <div class="card-header">
-        <h2>Answers ({{ answers|length }})</h2>
+        <h2>Response Scripts ({{ scripts|length }})</h2>
     </div>
     <div class="card-body">
-        {% if answers %}
+        {% if best_script %}
+        <!-- Best Script -->
+        <div class="script-card best">
+            <div class="best-badge">⭐ BEST ANSWER ({{ best_script.effectiveness|round(0)|int }}%)</div>
+            <div class="script-text">{{ best_script.script_text }}</div>
+            <div class="script-meta">
+                <span class="script-type type-{{ best_script.script_type }}">{{ best_script.script_type }}</span>
+                {% if best_script.has_steps %}<span class="has-steps">✓ Has steps</span>{% endif %}
+                <span class="vote-info">{{ best_script.success_count }} helpful / {{ best_script.fail_count }} not helpful</span>
+            </div>
+            <div class="script-actions">
+                <button onclick="copyScript({{ best_script.id }})" class="btn-copy">📋 Copy</button>
+                <button onclick="feedback({{ best_script.id }}, true)" class="btn-up">👍 Helped</button>
+                <button onclick="feedback({{ best_script.id }}, false)" class="btn-down">👎 Didn't help</button>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if other_scripts %}
+        <h3 style="margin-top: 2rem; margin-bottom: 1rem; color: #666;">Other options:</h3>
+        {% for script in other_scripts %}
+        <div class="script-card">
+            <div class="effectiveness-badge">{{ script.effectiveness|round(0)|int }}%</div>
+            <div class="script-text">{{ script.script_text }}</div>
+            <div class="script-meta">
+                <span class="script-type type-{{ script.script_type }}">{{ script.script_type }}</span>
+                {% if script.has_steps %}<span class="has-steps">✓ Has steps</span>{% endif %}
+                <span class="vote-info">{{ script.success_count }} / {{ script.fail_count }}</span>
+            </div>
+            <div class="script-actions">
+                <button onclick="copyScript({{ script.id }})" class="btn-copy">📋 Copy</button>
+                <button onclick="feedback({{ script.id }}, true)" class="btn-up">👍</button>
+                <button onclick="feedback({{ script.id }}, false)" class="btn-down">👎</button>
+            </div>
+        </div>
+        {% endfor %}
+        {% endif %}
+
+        {% if not scripts %}
+        <div class="empty-state">
+            <p>No response scripts yet for this question.</p>
+            <p style="color: #888; font-size: 0.9rem;">Scripts will be automatically extracted when calls about this topic are processed.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Legacy Answers (if any) -->
+{% if answers and not scripts %}
+<div class="card">
+    <div class="card-header">
+        <h2>Legacy Answers ({{ answers|length }})</h2>
+    </div>
+    <div class="card-body">
         <div class="answers-list">
             {% for answer in answers %}
             <div class="answer-card {% if answer.is_best %}best{% endif %}">
                 {% if answer.is_best %}
                 <div class="best-badge">Best Answer</div>
                 {% endif %}
-
-                <div class="answer-content">
-                    {{ answer.answer_text }}
-                </div>
-
+                <div class="answer-content">{{ answer.answer_text }}</div>
                 <div class="answer-footer">
                     <div class="answer-stats">
-                        <span class="effectiveness" title="Effectiveness score">
-                            {% if answer.effectiveness_percent >= 70 %}
-                            <span style="color: #28a745;">{{ answer.effectiveness_percent|round(0)|int }}%</span>
-                            {% elif answer.effectiveness_percent >= 40 %}
-                            <span style="color: #ffc107;">{{ answer.effectiveness_percent|round(0)|int }}%</span>
-                            {% else %}
-                            <span style="color: #dc3545;">{{ answer.effectiveness_percent|round(0)|int }}%</span>
-                            {% endif %}
-                            effective
-                        </span>
-                        <span class="vote-info">
-                            {{ answer.success_count }} helpful / {{ answer.fail_count }} not helpful
-                        </span>
+                        <span class="effectiveness">{{ answer.effectiveness_percent|round(0)|int }}% effective</span>
+                        <span class="vote-info">{{ answer.success_count }} / {{ answer.fail_count }}</span>
                     </div>
-
-                    <div class="answer-source">
-                        {% if answer.source_filename %}
-                        Source: {{ answer.source_filename }}
-                        {% endif %}
-                    </div>
-                </div>
-
-                <!-- Feedback Buttons -->
-                <div class="feedback-buttons">
-                    <span>Was this helpful?</span>
-                    <button class="btn btn-sm btn-success" onclick="submitFeedback({{ answer.id }}, true)">
-                        Yes
-                    </button>
-                    <button class="btn btn-sm" onclick="submitFeedback({{ answer.id }}, false)">
-                        No
-                    </button>
                 </div>
             </div>
             {% endfor %}
         </div>
-        {% else %}
-        <div class="empty-state">
-            <p>No answers yet for this question.</p>
-        </div>
-        {% endif %}
     </div>
 </div>
+{% endif %}
+
+<!-- Copy Success Toast -->
+<div id="toast" class="toast">Copied to clipboard!</div>
 {% endblock %}
 
 {% block head %}
@@ -106,6 +126,7 @@
     display: flex;
     gap: 1rem;
     align-items: center;
+    flex-wrap: wrap;
 }
 
 .cluster-badge {
@@ -142,83 +163,140 @@
     border-bottom: none;
 }
 
-.answers-list {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-}
-
-.answer-card {
+/* Script Cards */
+.script-card {
     background: #f8f9fa;
+    border: 1px solid #dee2e6;
     border-radius: 8px;
-    padding: 1.5rem;
+    padding: 16px;
+    margin: 12px 0;
     position: relative;
 }
 
-.answer-card.best {
-    background: #e8f5e9;
-    border: 2px solid #4caf50;
+.script-card.best {
+    background: #d4edda;
+    border-color: #28a745;
+    border-width: 2px;
 }
 
 .best-badge {
-    position: absolute;
-    top: -10px;
-    right: 20px;
-    background: #4caf50;
-    color: white;
-    padding: 0.25rem 0.75rem;
-    border-radius: 4px;
-    font-size: 0.8rem;
+    color: #28a745;
     font-weight: bold;
-}
-
-.answer-content {
+    margin-bottom: 12px;
     font-size: 1rem;
-    line-height: 1.6;
-    color: #333;
-    margin-bottom: 1rem;
-    white-space: pre-wrap;
 }
 
-.answer-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-top: 1rem;
-    border-top: 1px solid #ddd;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-}
-
-.answer-stats {
-    display: flex;
-    gap: 1.5rem;
-    align-items: center;
-}
-
-.effectiveness {
+.effectiveness-badge {
+    position: absolute;
+    top: 12px;
+    right: 16px;
+    background: #6c757d;
+    color: white;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.85rem;
     font-weight: bold;
+}
+
+.script-text {
+    font-size: 16px;
+    line-height: 1.6;
+    padding: 16px;
+    background: white;
+    border-radius: 6px;
+    margin: 8px 0;
+    white-space: pre-wrap;
+    border: 1px solid #e9ecef;
+}
+
+.script-card.best .script-text {
+    background: #f8fff8;
+    border-color: #c3e6cb;
+}
+
+.script-meta {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 12px;
+    font-size: 0.85rem;
+}
+
+.script-type {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+    text-transform: capitalize;
+}
+
+.type-instruction { background: #cce5ff; color: #004085; }
+.type-explanation { background: #d4edda; color: #155724; }
+.type-promise { background: #fff3cd; color: #856404; }
+.type-apology { background: #f8d7da; color: #721c24; }
+.type-info { background: #e2e3e5; color: #383d41; }
+
+.has-steps {
+    color: #28a745;
+    font-weight: 500;
 }
 
 .vote-info {
     color: #888;
-    font-size: 0.85rem;
 }
 
-.answer-source {
-    color: #888;
-    font-size: 0.85rem;
-}
-
-.feedback-buttons {
-    margin-top: 1rem;
-    padding-top: 1rem;
-    border-top: 1px solid #ddd;
+.script-actions {
     display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    color: #666;
-    font-size: 0.9rem;
+    gap: 8px;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid #dee2e6;
+}
+
+.btn-copy {
+    background: #007bff;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.btn-copy:hover {
+    background: #0056b3;
+}
+
+.btn-up {
+    background: #28a745;
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    transition: all 0.2s;
+}
+
+.btn-up:hover {
+    background: #1e7e34;
+}
+
+.btn-down {
+    background: #dc3545;
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    transition: all 0.2s;
+}
+
+.btn-down:hover {
+    background: #c82333;
 }
 
 .status-badge {
@@ -231,13 +309,89 @@
 .status-resolved { background: #d4edda; color: #155724; }
 .status-needs_work { background: #fff3cd; color: #856404; }
 .status-no_answer { background: #e9ecef; color: #495057; }
+
+/* Toast notification */
+.toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 1000;
+}
+
+.toast.show {
+    opacity: 1;
+}
+
+/* Legacy answers */
+.answers-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.answer-card {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.answer-card.best {
+    background: #e8f5e9;
+    border: 2px solid #4caf50;
+}
+
+.answer-content {
+    white-space: pre-wrap;
+    line-height: 1.6;
+}
+
+.answer-footer {
+    margin-top: 1rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid #ddd;
+}
+
+.answer-stats {
+    display: flex;
+    gap: 1rem;
+    color: #666;
+    font-size: 0.85rem;
+}
 </style>
 {% endblock %}
 
 {% block scripts %}
 <script>
-function submitFeedback(answerId, helpful) {
-    fetch('/api/answer/' + answerId + '/feedback', {
+function copyScript(id) {
+    fetch('/api/script/' + id + '/copy')
+        .then(r => r.json())
+        .then(data => {
+            if (data.text) {
+                navigator.clipboard.writeText(data.text).then(() => {
+                    showToast('Copied to clipboard!');
+                }).catch(() => {
+                    // Fallback for older browsers
+                    const textarea = document.createElement('textarea');
+                    textarea.value = data.text;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    showToast('Copied to clipboard!');
+                });
+            }
+        });
+}
+
+function feedback(id, helpful) {
+    fetch('/api/script/' + id + '/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ helpful: helpful })
@@ -245,10 +399,17 @@ function submitFeedback(answerId, helpful) {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
-            alert('Thank you for your feedback!');
-            location.reload();
+            showToast(helpful ? 'Thanks for the feedback!' : 'Thanks, we\'ll improve this.');
+            setTimeout(() => location.reload(), 1000);
         }
     });
+}
+
+function showToast(message) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2000);
 }
 </script>
 {% endblock %}

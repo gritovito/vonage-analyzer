@@ -1,12 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - Knowledge Hub{% endblock %}
+{% block title %}Dashboard - Response Scripts Library{% endblock %}
 
 {% block content %}
 <div class="page-header">
-    <h1>Dashboard</h1>
+    <h1>Response Scripts Library</h1>
     <div class="header-actions">
-        <button class="btn btn-primary" onclick="scanAndProcess()">Scan & Process</button>
+        <a href="{{ url_for('search') }}" class="btn btn-primary">Search Scripts</a>
+        <button class="btn" onclick="scanAndProcess()">Scan & Process</button>
     </div>
 </div>
 
@@ -16,9 +17,9 @@
         <div class="stat-value">{{ stats.total_questions }}</div>
         <div class="stat-label">Questions</div>
     </div>
-    <div class="stat-card">
-        <div class="stat-value">{{ stats.total_answers }}</div>
-        <div class="stat-label">Answers</div>
+    <div class="stat-card stat-scripts">
+        <div class="stat-value">{{ stats.total_scripts }}</div>
+        <div class="stat-label">Scripts</div>
     </div>
     <div class="stat-card stat-processed">
         <div class="stat-value">{{ stats.resolved_count }}</div>
@@ -29,8 +30,8 @@
         <div class="stat-label">Needs Work</div>
     </div>
     <div class="stat-card">
-        <div class="stat-value">{{ stats.total_documents }}</div>
-        <div class="stat-label">Documents</div>
+        <div class="stat-value">{{ stats.avg_script_effectiveness }}%</div>
+        <div class="stat-label">Avg Effectiveness</div>
     </div>
     <div class="stat-card stat-pending">
         <div class="stat-value">{{ stats.pending_documents }}</div>
@@ -63,7 +64,7 @@
 </div>
 
 <div class="grid-2">
-    <!-- Top Questions -->
+    <!-- Top Questions with Scripts -->
     <div class="card">
         <div class="card-header">
             <h2>Top Questions</h2>
@@ -112,7 +113,7 @@
                 {% endfor %}
             </ul>
             {% else %}
-            <p class="empty-state">No questions need work</p>
+            <p class="empty-state">All questions have good scripts!</p>
             {% endif %}
         </div>
     </div>
@@ -149,6 +150,14 @@
         {% endif %}
     </div>
 </div>
+{% endblock %}
+
+{% block head %}
+<style>
+.stat-card.stat-scripts .stat-value {
+    color: #007bff;
+}
+</style>
 {% endblock %}
 
 {% block scripts %}

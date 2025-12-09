@@ -4,7 +4,7 @@
 
 {% block content %}
 <div class="page-header">
-    <h1>Search</h1>
+    <h1>Search Response Scripts</h1>
 </div>
 
 <!-- Search Form -->
@@ -26,7 +26,7 @@
         <div class="result-section">
             <h2>{% if results.is_semantic %}Similar Questions{% else %}Matching Questions{% endif %} ({{ results.questions|length }})</h2>
             {% if results.is_semantic %}
-            <p class="result-description">Questions semantically similar to your query, ranked by AI similarity score.</p>
+            <p class="result-description">Questions semantically similar to your query. Click Copy to use the best script.</p>
             {% endif %}
             <div class="result-list">
                 {% for item in results.questions %}
@@ -49,7 +49,21 @@
                             </span>
                             <span class="times-asked">{{ item.times_asked }}x asked</span>
                             <span class="status-badge status-{{ item.status }}">{{ item.status }}</span>
+                            {% if item.script_count %}
+                            <span class="script-count">{{ item.script_count }} scripts</span>
+                            {% endif %}
                         </div>
+
+                        <!-- Best Script Preview -->
+                        {% if item.best_script %}
+                        <div class="best-script-preview">
+                            <div class="script-preview-header">
+                                <span class="best-label">Best Response ({{ item.best_script.effectiveness|round(0)|int }}%)</span>
+                                <button onclick="copyScript({{ item.best_script.id }})" class="btn-copy-small">Copy</button>
+                            </div>
+                            <div class="script-preview-text">{{ item.best_script.text|truncate(200) }}</div>
+                        </div>
+                        {% endif %}
                     </div>
                 </div>
                 {% endfor %}
@@ -70,9 +84,13 @@
         <li><strong>Semantic Search (AI):</strong> Describe the problem in natural language. Our AI will find questions with similar meaning.</li>
         <li><strong>Text Search:</strong> Find exact keyword matches in questions.</li>
         <li>Example: "phone won't turn on" will match "device not powering up" in semantic search.</li>
+        <li><strong>Quick Copy:</strong> Click "Copy" next to any result to copy the best response script to your clipboard.</li>
     </ul>
 </div>
 {% endif %}
+
+<!-- Copy Success Toast -->
+<div id="toast" class="toast">Copied to clipboard!</div>
 {% endblock %}
 
 {% block head %}
@@ -145,5 +163,115 @@
     display: block;
     margin-bottom: 0.5rem;
 }
+
+.result-meta {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+}
+
+.script-count {
+    color: #28a745;
+    font-weight: 500;
+    font-size: 0.85rem;
+}
+
+/* Best Script Preview */
+.best-script-preview {
+    background: #f0fff0;
+    border: 1px solid #c3e6cb;
+    border-radius: 8px;
+    padding: 12px;
+    margin-top: 12px;
+}
+
+.script-preview-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.best-label {
+    color: #28a745;
+    font-weight: bold;
+    font-size: 0.85rem;
+}
+
+.btn-copy-small {
+    background: #007bff;
+    color: white;
+    border: none;
+    padding: 6px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.btn-copy-small:hover {
+    background: #0056b3;
+}
+
+.script-preview-text {
+    color: #333;
+    line-height: 1.5;
+    font-size: 0.95rem;
+    white-space: pre-wrap;
+}
+
+/* Toast notification */
+.toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #333;
+    color: white;
+    padding: 12px 24px;
+    border-radius: 8px;
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 1000;
+}
+
+.toast.show {
+    opacity: 1;
+}
 </style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copyScript(id) {
+    fetch('/api/script/' + id + '/copy')
+        .then(r => r.json())
+        .then(data => {
+            if (data.text) {
+                navigator.clipboard.writeText(data.text).then(() => {
+                    showToast('Copied to clipboard!');
+                }).catch(() => {
+                    // Fallback for older browsers
+                    const textarea = document.createElement('textarea');
+                    textarea.value = data.text;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    showToast('Copied to clipboard!');
+                });
+            }
+        });
+}
+
+function showToast(message) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2000);
+}
+</script>
 {% endblock %}

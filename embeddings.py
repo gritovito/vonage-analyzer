@@ -104,9 +104,10 @@ def find_similar_question(question_text, threshold=None):
 def semantic_search(query_text, limit=10, threshold=0.3):
     """
     Search for similar questions using semantic matching
+    Includes best script for each question (v3)
 
     Returns:
-        List of questions with similarity scores
+        List of questions with similarity scores and best scripts
     """
     query_embedding = get_embedding(query_text)
     if not query_embedding:
@@ -124,7 +125,10 @@ def semantic_search(query_text, limit=10, threshold=0.3):
             if similarity >= threshold:
                 full_question = db.get_question(question['id'])
                 if full_question:
-                    results.append({
+                    # Get best script (v3)
+                    best_script = db.get_best_script(question['id'])
+
+                    result = {
                         'id': question['id'],
                         'canonical_text': question['canonical_text'],
                         'similarity': round(similarity * 100, 1),
@@ -133,8 +137,21 @@ def semantic_search(query_text, limit=10, threshold=0.3):
                         'cluster_color': full_question['cluster_color'],
                         'status': full_question['status'],
                         'times_asked': full_question['times_asked'],
-                        'answer_count': full_question['answer_count']
-                    })
+                        'answer_count': full_question['answer_count'],
+                        'script_count': db.get_scripts_count(question['id'])
+                    }
+
+                    # Add best script info if available
+                    if best_script:
+                        result['best_script'] = {
+                            'id': best_script['id'],
+                            'text': best_script['script_text'],
+                            'type': best_script['script_type'],
+                            'effectiveness': best_script['effectiveness'],
+                            'has_steps': bool(best_script['has_steps'])
+                        }
+
+                    results.append(result)
 
     results.sort(key=lambda x: x['similarity'], reverse=True)
     return results[:limit]
