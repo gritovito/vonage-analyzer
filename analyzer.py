@@ -270,7 +270,7 @@ def process_document(doc_id):
     db.update_daily_summary(
         calls=1,
         questions=1 if new_question else 0,
-        answers=scripts_added,
+        scripts=scripts_added,
         resolved=resolved_count,
         unresolved=1 - resolved_count
     )
