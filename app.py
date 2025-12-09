@@ -1,6 +1,6 @@
 """
-Call Analyzer - Flask Web Application
-Self-learning Help Desk system for analyzing call transcriptions
+Call Analyzer v2.0 - Flask Web Application
+Self-learning Help Desk system with semantic matching and answer ratings
 """
 import os
 import json
@@ -13,12 +13,12 @@ import atexit
 
 from config import (
     FLASK_HOST, FLASK_PORT, DEBUG,
-    UPLOAD_FOLDER, DOC_TYPES, FACT_CATEGORIES,
-    WATCH_INTERVAL_SECONDS, DATA_DIR
+    UPLOAD_FOLDER, DOC_TYPES, DATA_DIR
 )
 import database as db
 import analyzer
 import watcher
+import embeddings
 
 # Setup logging
 logging.basicConfig(
@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 # Initialize Flask app
 app = Flask(__name__)
-app.secret_key = 'call-analyzer-secret-key-2024'
+app.secret_key = 'call-analyzer-secret-key-2024-v2'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max
 
@@ -81,13 +81,13 @@ scheduler = BackgroundScheduler()
 scheduler.add_job(
     func=run_background_processing,
     trigger="interval",
-    seconds=WATCH_INTERVAL_SECONDS,
+    seconds=300,
     id='transcription_watcher',
     name='Watch for new transcriptions',
     max_instances=1
 )
 scheduler.start()
-logger.info(f"Scheduler started - running every {WATCH_INTERVAL_SECONDS} seconds")
+logger.info("Scheduler started - running every 5 minutes")
 
 # Shut down scheduler when app exits
 atexit.register(lambda: scheduler.shutdown())
@@ -115,24 +115,118 @@ def truncate_text(text, length=100):
     return text[:length] + '...'
 
 
-# Routes
+# ==================== MAIN ROUTES ====================
+
 @app.route('/')
 def index():
     """Dashboard - main page with statistics"""
     stats = db.get_total_stats()
     recent_docs = db.get_documents(limit=10)
-    facts_by_category = db.get_facts_by_category()
-    top_faq = db.get_faq(limit=5)
+    questions_by_topic = db.get_questions_by_topic()
+    top_questions = db.get_questions(limit=5, sort_by='times_asked')
     summary = db.get_summary(days=7)
 
     return render_template('index.html',
                            stats=stats,
                            recent_docs=recent_docs,
-                           facts_by_category=facts_by_category,
-                           top_faq=top_faq,
+                           questions_by_topic=questions_by_topic,
+                           top_questions=top_questions,
                            summary=summary,
                            doc_types=DOC_TYPES,
                            processing_status=processing_status)
+
+
+@app.route('/solutions')
+def solutions():
+    """Support Solutions - main working page with questions and answers"""
+    topic_id = request.args.get('topic', type=int)
+    page = int(request.args.get('page', 1))
+    sort = request.args.get('sort', 'times_asked')
+    per_page = 20
+    offset = (page - 1) * per_page
+
+    questions = db.get_questions(topic_id=topic_id, limit=per_page, offset=offset, sort_by=sort)
+    total = db.get_questions_count(topic_id=topic_id)
+    total_pages = (total + per_page - 1) // per_page
+    topics = db.get_topics()
+    questions_by_topic = db.get_questions_by_topic()
+
+    return render_template('solutions.html',
+                           questions=questions,
+                           topics=topics,
+                           questions_by_topic=questions_by_topic,
+                           current_topic=topic_id,
+                           page=page,
+                           total_pages=total_pages,
+                           total=total,
+                           sort=sort)
+
+
+@app.route('/solution/<int:question_id>')
+def solution_detail(question_id):
+    """View single question with all answers"""
+    question = db.get_question(question_id)
+    if not question:
+        flash('Question not found', 'error')
+        return redirect(url_for('solutions'))
+
+    answers = db.get_answers(question_id)
+    variants = db.get_question_variants(question_id)
+
+    return render_template('solution_detail.html',
+                           question=question,
+                           answers=answers,
+                           variants=variants)
+
+
+@app.route('/knowledge')
+def knowledge():
+    """Knowledge Base - for onboarding materials"""
+    category = request.args.get('category')
+    page = int(request.args.get('page', 1))
+    per_page = 20
+    offset = (page - 1) * per_page
+
+    knowledge_items = db.get_knowledge(category=category, limit=per_page, offset=offset)
+    total = db.get_knowledge_count(category=category)
+    total_pages = (total + per_page - 1) // per_page
+
+    # Get unique categories
+    all_knowledge = db.get_knowledge(limit=1000)
+    categories = list(set(k['category'] for k in all_knowledge if k['category']))
+
+    return render_template('knowledge.html',
+                           knowledge=knowledge_items,
+                           categories=categories,
+                           current_category=category,
+                           page=page,
+                           total_pages=total_pages,
+                           total=total)
+
+
+@app.route('/search')
+def search():
+    """Smart search page with semantic search"""
+    query = request.args.get('q', '')
+    search_type = request.args.get('type', 'semantic')
+    results = None
+
+    if query:
+        if search_type == 'semantic':
+            # Use semantic search
+            results = {
+                'questions': embeddings.semantic_search(query, limit=20, threshold=0.3),
+                'is_semantic': True
+            }
+        else:
+            # Use text search
+            results = db.search_all(query)
+            results['is_semantic'] = False
+
+    return render_template('search.html',
+                           query=query,
+                           results=results,
+                           search_type=search_type)
 
 
 @app.route('/documents')
@@ -160,16 +254,23 @@ def documents():
 
 @app.route('/document/<int:doc_id>')
 def document_detail(doc_id):
-    """View single document with its facts"""
+    """View single document"""
     doc = db.get_document(doc_id)
     if not doc:
         flash('Document not found', 'error')
         return redirect(url_for('documents'))
 
-    facts = db.get_facts(document_id=doc_id, limit=100)
+    # Parse analysis result if available
+    analysis = None
+    if doc['analysis_result']:
+        try:
+            analysis = json.loads(doc['analysis_result'])
+        except:
+            pass
+
     return render_template('document_detail.html',
                            document=doc,
-                           facts=facts,
+                           analysis=analysis,
                            doc_types=DOC_TYPES)
 
 
@@ -182,7 +283,7 @@ def upload():
             return redirect(request.url)
 
         file = request.files['file']
-        doc_type = request.form.get('doc_type', 'manual_knowledge')
+        doc_type = request.form.get('doc_type', 'knowledge_base')
 
         if file.filename == '':
             flash('No file selected', 'error')
@@ -230,87 +331,37 @@ def upload():
     return render_template('upload.html', doc_types=DOC_TYPES)
 
 
-@app.route('/faq')
-def faq():
-    """FAQ page"""
-    page = int(request.args.get('page', 1))
-    per_page = 20
-    offset = (page - 1) * per_page
-    sort = request.args.get('sort', 'times_asked')
-
-    faq_items = db.get_faq(limit=per_page, offset=offset, sort_by=sort)
-    total = db.get_faq_count()
-    total_pages = (total + per_page - 1) // per_page
-
-    return render_template('faq.html',
-                           faq_items=faq_items,
-                           page=page,
-                           total_pages=total_pages,
-                           total=total,
-                           sort=sort)
-
-
-@app.route('/facts')
-def facts():
-    """View all facts by category"""
-    category = request.args.get('category')
-    page = int(request.args.get('page', 1))
-    per_page = 50
-    offset = (page - 1) * per_page
-
-    facts_list = db.get_facts(category=category, limit=per_page, offset=offset)
-    total = db.get_facts_count(category=category)
-    total_pages = (total + per_page - 1) // per_page
-    facts_by_category = db.get_facts_by_category()
-
-    return render_template('facts.html',
-                           facts=facts_list,
-                           categories=FACT_CATEGORIES,
-                           facts_by_category=facts_by_category,
-                           current_category=category,
-                           page=page,
-                           total_pages=total_pages,
-                           total=total)
-
-
-@app.route('/search')
-def search():
-    """Search page"""
-    query = request.args.get('q', '')
-    results = None
-
-    if query:
-        results = db.search_all(query)
-
-    return render_template('search.html', query=query, results=results)
-
-
 @app.route('/analytics')
 def analytics():
     """Analytics page with charts"""
     stats = db.get_total_stats()
     summary = db.get_summary(days=30)
-    facts_by_category = db.get_facts_by_category()
+    questions_by_topic = db.get_questions_by_topic()
 
     # Prepare chart data
     chart_data = {
         'dates': [],
         'calls': [],
-        'facts': []
+        'questions': [],
+        'resolved': [],
+        'unresolved': []
     }
     for s in reversed(list(summary)):
         chart_data['dates'].append(s['date'])
         chart_data['calls'].append(s['total_calls'])
-        chart_data['facts'].append(s['new_facts'])
+        chart_data['questions'].append(s['new_questions'])
+        chart_data['resolved'].append(s['resolved_count'])
+        chart_data['unresolved'].append(s['unresolved_count'])
 
     return render_template('analytics.html',
                            stats=stats,
                            summary=summary,
-                           facts_by_category=facts_by_category,
+                           questions_by_topic=questions_by_topic,
                            chart_data=json.dumps(chart_data))
 
 
-# API endpoints
+# ==================== API ENDPOINTS ====================
+
 @app.route('/api/stats')
 def api_stats():
     """Get current statistics"""
@@ -338,7 +389,6 @@ def api_scan():
     if processing_status['is_processing']:
         return jsonify({'error': 'Processing already in progress', 'status': processing_status})
 
-    # Run scan in current thread (blocking but gives immediate feedback)
     new_count = watcher.scan_for_new_files()
 
     return jsonify({
@@ -389,32 +439,89 @@ def api_process_all():
 def api_search():
     """Search API endpoint"""
     query = request.args.get('q', '')
+    search_type = request.args.get('type', 'semantic')
+
     if not query:
         return jsonify({'error': 'Query required'}), 400
 
-    results = db.search_all(query)
-
-    # Convert Row objects to dicts
-    response = {
-        'documents': [dict(d) for d in results['documents']],
-        'facts': [dict(f) for f in results['facts']],
-        'faq': [dict(f) for f in results['faq']]
-    }
-    return jsonify(response)
-
-
-@app.route('/api/faq/search')
-def api_faq_search():
-    """Search FAQ endpoint"""
-    query = request.args.get('q', '')
-    if not query:
-        return jsonify([])
-
-    results = db.search_faq(query)
-    return jsonify([dict(r) for r in results])
+    if search_type == 'semantic':
+        results = embeddings.semantic_search(query, limit=20, threshold=0.3)
+        return jsonify({'questions': results, 'is_semantic': True})
+    else:
+        results = db.search_all(query)
+        response = {
+            'questions': [dict(q) for q in results['questions']],
+            'answers': [dict(a) for a in results['answers']],
+            'knowledge': [dict(k) for k in results['knowledge']],
+            'documents': [dict(d) for d in results['documents']],
+            'is_semantic': False
+        }
+        return jsonify(response)
 
 
-# Error handlers
+@app.route('/api/question/<int:question_id>/answers')
+def api_question_answers(question_id):
+    """Get answers for a question"""
+    answers = db.get_answers(question_id)
+    return jsonify([dict(a) for a in answers])
+
+
+@app.route('/api/answer/<int:answer_id>/feedback', methods=['POST'])
+def api_answer_feedback(answer_id):
+    """Submit feedback for an answer"""
+    data = request.get_json()
+    resolved = data.get('resolved', False)
+    satisfied = data.get('satisfied', False)
+
+    db.update_answer_outcome(answer_id, resolved, satisfied)
+
+    return jsonify({'success': True})
+
+
+@app.route('/api/migrate', methods=['POST'])
+def api_migrate():
+    """Run migration from v1 to v2"""
+    try:
+        db.migrate_from_v1()
+        return jsonify({'success': True, 'message': 'Migration completed'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/reprocess', methods=['POST'])
+def api_reprocess():
+    """Reprocess all documents"""
+    global processing_status
+
+    if processing_status['is_processing']:
+        return jsonify({'error': 'Processing already in progress'})
+
+    processing_status['is_processing'] = True
+
+    try:
+        processed, errors, total = analyzer.reprocess_all_documents()
+        return jsonify({
+            'success': True,
+            'processed': processed,
+            'errors': errors,
+            'total': total
+        })
+    finally:
+        processing_status['is_processing'] = False
+
+
+@app.route('/api/update-embeddings', methods=['POST'])
+def api_update_embeddings():
+    """Update embeddings for all questions"""
+    try:
+        updated = embeddings.update_all_embeddings()
+        return jsonify({'success': True, 'updated': updated})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# ==================== ERROR HANDLERS ====================
+
 @app.errorhandler(404)
 def not_found(e):
     return render_template('error.html', error='Page not found'), 404
@@ -426,8 +533,11 @@ def server_error(e):
 
 
 # Run initial scan on startup
-logger.info("Starting Call Analyzer...")
+logger.info("Starting Call Analyzer v2.0...")
 watcher.run_initial_scan()
+
+# Run migration if needed
+db.migrate_from_v1()
 
 
 if __name__ == '__main__':

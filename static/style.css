@@ -930,3 +930,335 @@ a:hover {
 .stat-card.stat-error .stat-value {
     color: #dc3545;
 }
+
+/* ==================== V2.0 NEW STYLES ==================== */
+
+/* Version Badge in Navbar */
+.nav-brand .version {
+    background: rgba(255,255,255,0.2);
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    margin-left: 0.5rem;
+}
+
+/* Solution Cards */
+.solutions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.solution-card {
+    background: white;
+    border-radius: 8px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.solution-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+}
+
+.solution-question {
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: #333;
+    text-decoration: none;
+    display: block;
+    margin-bottom: 0.75rem;
+}
+
+.solution-question:hover {
+    color: #4a90d9;
+    text-decoration: none;
+}
+
+.solution-meta {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.answer-count {
+    color: #666;
+    font-size: 0.9rem;
+}
+
+/* Resolution & Satisfaction Badges */
+.badge-resolved { background: #d4edda; color: #155724; }
+.badge-partial { background: #fff3cd; color: #856404; }
+.badge-unresolved { background: #f8d7da; color: #721c24; }
+.badge-unknown { background: #e9ecef; color: #495057; }
+.badge-positive { background: #d4edda; color: #155724; }
+.badge-neutral { background: #e9ecef; color: #495057; }
+.badge-negative { background: #f8d7da; color: #721c24; }
+
+/* Answer Cards */
+.answers-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.answer-card {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 1.5rem;
+    position: relative;
+}
+
+.answer-card.recommended {
+    background: #e8f5e9;
+    border: 2px solid #4caf50;
+}
+
+.recommended-badge {
+    position: absolute;
+    top: -10px;
+    right: 20px;
+    background: #4caf50;
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+.answer-content {
+    font-size: 1rem;
+    line-height: 1.6;
+    color: #333;
+    margin-bottom: 1rem;
+    white-space: pre-wrap;
+}
+
+.answer-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 1rem;
+    border-top: 1px solid #ddd;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.answer-stats {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.effectiveness {
+    font-weight: bold;
+}
+
+.answer-source {
+    color: #888;
+    font-size: 0.85rem;
+}
+
+.feedback-buttons {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #ddd;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    color: #666;
+    font-size: 0.9rem;
+}
+
+/* Question Variants */
+.variants-section {
+    margin-top: 1rem;
+}
+
+.variants-section h4 {
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 0.5rem;
+}
+
+.variants-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.variants-list li {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #eee;
+    color: #555;
+    font-style: italic;
+}
+
+.variants-list li:last-child {
+    border-bottom: none;
+}
+
+/* Semantic Search Results */
+.semantic-result {
+    display: flex;
+    gap: 1.5rem;
+    align-items: flex-start;
+}
+
+.similarity-score {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 70px;
+}
+
+.score-circle {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 0.9rem;
+    background: conic-gradient(
+        #4a90d9 calc(var(--score) * 1%),
+        #e9ecef calc(var(--score) * 1%)
+    );
+    position: relative;
+}
+
+.score-circle::before {
+    content: '';
+    position: absolute;
+    width: 50px;
+    height: 50px;
+    background: white;
+    border-radius: 50%;
+}
+
+.score-label {
+    font-size: 0.75rem;
+    color: #888;
+    margin-top: 0.25rem;
+}
+
+.result-content-area {
+    flex: 1;
+}
+
+.result-content-area .result-title {
+    font-size: 1.1rem;
+    display: block;
+    margin-bottom: 0.5rem;
+}
+
+/* Search Type Select */
+.search-type-select {
+    padding: 1rem;
+    font-size: 1rem;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    background: white;
+    min-width: 180px;
+}
+
+/* Analysis Section */
+.analysis-grid {
+    display: flex;
+    gap: 2rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.analysis-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.analysis-label {
+    font-weight: 500;
+    color: #666;
+}
+
+.analysis-section {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid #eee;
+}
+
+.analysis-section h4 {
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 0.5rem;
+}
+
+.analysis-section p {
+    color: #333;
+    line-height: 1.6;
+}
+
+.keywords {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+/* Knowledge Base Styles */
+.knowledge-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.knowledge-card {
+    background: white;
+    border-radius: 8px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.knowledge-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+}
+
+.knowledge-header h3 {
+    font-size: 1.1rem;
+    color: #333;
+    margin: 0;
+}
+
+.knowledge-content {
+    color: #555;
+    line-height: 1.6;
+    white-space: pre-wrap;
+}
+
+.knowledge-footer {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #eee;
+    color: #888;
+    font-size: 0.85rem;
+}
+
+/* Result Description */
+.result-description {
+    color: #666;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+}
+
+/* Page Description */
+.page-description {
+    color: #666;
+    margin-bottom: 1.5rem;
+}

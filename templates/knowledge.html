@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Knowledge Base - Call Analyzer{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Knowledge Base</h1>
+    <a href="{{ url_for('upload') }}" class="btn btn-primary">Upload Knowledge</a>
+</div>
+
+<p class="page-description">
+    Training materials, product information, and reference documents for onboarding.
+</p>
+
+<!-- Category Filter -->
+{% if categories %}
+<div class="filters">
+    <div class="filter-form">
+        <div class="filter-group">
+            <label>Category:</label>
+            <div class="category-filter">
+                <a href="{{ url_for('knowledge') }}" class="btn btn-sm {% if not current_category %}active{% endif %}">All</a>
+                {% for cat in categories %}
+                <a href="{{ url_for('knowledge', category=cat) }}"
+                   class="btn btn-sm {% if current_category == cat %}active{% endif %}">
+                    {{ cat }}
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        <span class="result-count">{{ total }} items</span>
+    </div>
+</div>
+{% endif %}
+
+<!-- Knowledge List -->
+{% if knowledge %}
+<div class="knowledge-list">
+    {% for item in knowledge %}
+    <div class="knowledge-card">
+        <div class="knowledge-header">
+            <h3>{{ item.title }}</h3>
+            {% if item.category %}
+            <span class="badge badge-category">{{ item.category }}</span>
+            {% endif %}
+        </div>
+        <div class="knowledge-content">
+            {{ item.content }}
+        </div>
+        <div class="knowledge-footer">
+            {% if item.source_filename %}
+            <span class="source">Source: {{ item.source_filename }}</span>
+            {% endif %}
+            <span class="date">{{ item.created_at|datetime }}</span>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<div class="pagination">
+    {% if page > 1 %}
+    <a href="{{ url_for('knowledge', category=current_category, page=page-1) }}" class="btn">&laquo; Previous</a>
+    {% endif %}
+    <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
+    {% if page < total_pages %}
+    <a href="{{ url_for('knowledge', category=current_category, page=page+1) }}" class="btn">Next &raquo;</a>
+    {% endif %}
+</div>
+{% endif %}
+
+{% else %}
+<div class="card">
+    <div class="card-body">
+        <div class="empty-state">
+            <h3>No knowledge items yet</h3>
+            <p>Upload training materials, product info, or FAQ documents to build your knowledge base.</p>
+            <a href="{{ url_for('upload') }}" class="btn btn-primary">Upload Documents</a>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block head %}
+<style>
+.page-description {
+    color: #666;
+    margin-bottom: 1.5rem;
+}
+
+.knowledge-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.knowledge-card {
+    background: white;
+    border-radius: 8px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.knowledge-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+}
+
+.knowledge-header h3 {
+    font-size: 1.1rem;
+    color: #333;
+    margin: 0;
+}
+
+.knowledge-content {
+    color: #555;
+    line-height: 1.6;
+    white-space: pre-wrap;
+}
+
+.knowledge-footer {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #eee;
+    color: #888;
+    font-size: 0.85rem;
+}
+
+.category-filter {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+</style>
+{% endblock %}

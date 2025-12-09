@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block title %}Support Solutions - Call Analyzer{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Support Solutions</h1>
+    <span class="result-count">{{ total }} questions</span>
+</div>
+
+<!-- Topic Filter -->
+<div class="filters">
+    <div class="filter-form">
+        <div class="filter-group">
+            <label>Topic:</label>
+            <div class="category-filter">
+                <a href="{{ url_for('solutions', sort=sort) }}" class="btn btn-sm {% if not current_topic %}active{% endif %}">All</a>
+                {% for topic in questions_by_topic %}
+                <a href="{{ url_for('solutions', topic=topic.id, sort=sort) }}"
+                   class="btn btn-sm {% if current_topic == topic.id %}active{% endif %}"
+                   style="{% if current_topic == topic.id %}background: {{ topic.color }}; color: white;{% endif %}">
+                    {{ topic.icon }} {{ topic.name }} ({{ topic.count }})
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="filter-group">
+            <label>Sort:</label>
+            <select onchange="location.href='{{ url_for('solutions', topic=current_topic) }}&sort=' + this.value">
+                <option value="times_asked" {% if sort == 'times_asked' %}selected{% endif %}>Most Asked</option>
+                <option value="recent" {% if sort == 'recent' %}selected{% endif %}>Recent</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- Questions List -->
+{% if questions %}
+<div class="solutions-list">
+    {% for q in questions %}
+    <div class="solution-card">
+        <div class="solution-header">
+            <a href="{{ url_for('solution_detail', question_id=q.id) }}" class="solution-question">
+                {{ q.canonical_text }}
+            </a>
+            <div class="solution-meta">
+                <span class="badge" style="background: {{ q.topic_color }}20; color: {{ q.topic_color }}">
+                    {{ q.topic_icon }} {{ q.topic_name }}
+                </span>
+                <span class="times-asked">{{ q.times_asked }}x asked</span>
+                <span class="answer-count">{{ q.answer_count }} answers</span>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Pagination -->
+{% if total_pages > 1 %}
+<div class="pagination">
+    {% if page > 1 %}
+    <a href="{{ url_for('solutions', topic=current_topic, sort=sort, page=page-1) }}" class="btn">&laquo; Previous</a>
+    {% endif %}
+    <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
+    {% if page < total_pages %}
+    <a href="{{ url_for('solutions', topic=current_topic, sort=sort, page=page+1) }}" class="btn">Next &raquo;</a>
+    {% endif %}
+</div>
+{% endif %}
+
+{% else %}
+<div class="card">
+    <div class="card-body">
+        <div class="empty-state">
+            <h3>No questions yet</h3>
+            <p>Process call transcriptions to automatically generate questions and solutions.</p>
+            <a href="{{ url_for('upload') }}" class="btn btn-primary">Upload Documents</a>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block head %}
+<style>
+.solutions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.solution-card {
+    background: white;
+    border-radius: 8px;
+    padding: 1.5rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.solution-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+}
+
+.solution-question {
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: #333;
+    text-decoration: none;
+    display: block;
+    margin-bottom: 0.75rem;
+}
+
+.solution-question:hover {
+    color: #4a90d9;
+    text-decoration: none;
+}
+
+.solution-meta {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.answer-count {
+    color: #666;
+    font-size: 0.9rem;
+}
+
+.category-filter {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+</style>
+{% endblock %}

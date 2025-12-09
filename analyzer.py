@@ -1,6 +1,7 @@
 """
-Analyzer module - processes documents using OpenAI GPT-4o-mini
+Analyzer module v2.0 - processes documents using OpenAI GPT-4o-mini
 Extracts structured information from call transcriptions
+Uses semantic matching to merge similar questions
 """
 import json
 import logging
@@ -8,6 +9,7 @@ import time
 from openai import OpenAI
 from config import OPENAI_API_KEY, OPENAI_MODEL, ANALYSIS_PROMPT
 import database as db
+import embeddings
 
 # Setup logging
 logging.basicConfig(
@@ -55,7 +57,6 @@ def analyze_transcription(content):
         # Clean up response if it has markdown code blocks
         if result_text.startswith("```"):
             lines = result_text.split("\n")
-            # Remove first and last lines (``` markers)
             lines = [l for l in lines if not l.strip().startswith("```")]
             result_text = "\n".join(lines).strip()
 
@@ -74,7 +75,8 @@ def analyze_transcription(content):
 
 def process_document(doc_id):
     """
-    Process a single document: analyze and extract facts
+    Process a single document: analyze and extract questions/answers
+    Uses semantic matching to merge similar questions
     """
     doc = db.get_document(doc_id)
     if not doc:
@@ -99,73 +101,83 @@ def process_document(doc_id):
         db.update_document_status(doc_id, 'error', 'OpenAI analysis failed')
         return False
 
-    # Extract and store facts
-    facts_added = 0
+    # Store analysis result
+    db.update_document_status(doc_id, 'processing', analysis_result=json.dumps(analysis))
 
-    # Process contacts
-    for contact in analysis.get('contacts', []):
-        if contact.get('value'):
-            db.add_fact(
-                doc_id,
-                'contact',
-                contact.get('type', 'unknown'),
-                f"{contact.get('value')} ({contact.get('role', 'unknown')})"
-            )
-            facts_added += 1
-
-    # Process main question
-    question = analysis.get('question', '')
-    if question:
-        db.add_fact(doc_id, 'question', 'main', question)
-        facts_added += 1
-
-    # Process answer
-    answer = analysis.get('answer', '')
-    if answer:
-        db.add_fact(doc_id, 'answer', 'main', answer)
-        facts_added += 1
-
-        # Add to FAQ if we have both question and answer
-        if question:
-            db.add_or_update_faq(question, answer, doc_id)
-
-    # Process problem
+    # Extract data from analysis
+    topic_name = analysis.get('topic', 'General Inquiry')
     problem = analysis.get('problem', '')
-    if problem:
-        db.add_fact(doc_id, 'problem', 'description', problem)
-        facts_added += 1
-
-    # Process solution
     solution = analysis.get('solution', '')
-    if solution:
-        db.add_fact(doc_id, 'solution', 'description', solution)
-        facts_added += 1
-
-    # Process agreements
-    agreements = analysis.get('agreements', '')
-    if agreements:
-        db.add_fact(doc_id, 'agreement', 'details', agreements)
-        facts_added += 1
-
-    # Process sentiment
-    sentiment = analysis.get('sentiment', '')
-    if sentiment:
-        db.add_fact(doc_id, 'sentiment', 'customer', sentiment)
-        facts_added += 1
-
-    # Process summary
+    resolution = analysis.get('resolution', 'unknown')
+    satisfaction = analysis.get('satisfaction', 'neutral')
     summary = analysis.get('summary', '')
-    if summary:
-        db.add_fact(doc_id, 'summary', 'call', summary)
-        facts_added += 1
+
+    if not problem or not solution:
+        logger.warning(f"Document {doc_id}: No problem or solution extracted")
+        db.update_document_status(doc_id, 'processed', analysis_result=json.dumps(analysis))
+        db.update_daily_summary(calls=1)
+        return True
+
+    # Get topic ID
+    topic = db.get_topic_by_name(topic_name)
+    if not topic:
+        # Fallback to General Inquiry
+        topic = db.get_topic_by_name('General Inquiry')
+    topic_id = topic['id'] if topic else 1
+
+    # Find similar existing question using semantic matching
+    match_result = embeddings.find_similar_question(problem)
+
+    new_question = False
+    resolved = 1 if resolution == 'resolved' else 0
+    unresolved = 1 if resolution == 'unresolved' else 0
+
+    if match_result and match_result.get('question_id'):
+        # Found similar question - add variant and new answer
+        question_id = match_result['question_id']
+        similarity = match_result['similarity']
+
+        logger.info(f"Found similar question (id={question_id}, similarity={similarity:.2%})")
+
+        # Add this problem as a variant phrasing
+        db.add_question_variant(question_id, problem, doc_id)
+
+        # Increment times_asked
+        db.increment_question_asked(question_id)
+
+    else:
+        # No similar question found - create new one
+        embedding = match_result.get('embedding') if match_result else None
+
+        question_id = db.add_question(topic_id, problem, embedding)
+        new_question = True
+
+        logger.info(f"Created new question (id={question_id})")
+
+    # Add the answer with effectiveness tracking
+    answer_id = db.add_answer(
+        question_id=question_id,
+        answer_text=solution,
+        source_document_id=doc_id,
+        resolution_status=resolution,
+        customer_satisfaction=satisfaction
+    )
+
+    logger.info(f"Added answer (id={answer_id}) for question {question_id}")
 
     # Update document status
-    db.update_document_status(doc_id, 'processed')
+    db.update_document_status(doc_id, 'processed', analysis_result=json.dumps(analysis))
 
     # Update daily summary
-    db.update_daily_summary(calls=1, facts=facts_added)
+    db.update_daily_summary(
+        calls=1,
+        questions=1 if new_question else 0,
+        answers=1,
+        resolved=resolved,
+        unresolved=unresolved
+    )
 
-    logger.info(f"Document {doc_id} processed successfully: {facts_added} facts extracted")
+    logger.info(f"Document {doc_id} processed successfully")
     return True
 
 
@@ -208,7 +220,7 @@ def process_pending_documents():
 
 def analyze_manual_document(doc_id, doc_type):
     """
-    Process manually uploaded documents (instructions, FAQ, etc.)
+    Process manually uploaded documents (knowledge base, instructions, FAQ)
     """
     doc = db.get_document(doc_id)
     if not doc:
@@ -223,8 +235,10 @@ def analyze_manual_document(doc_id, doc_type):
         return process_faq_document(doc_id, content)
     elif doc_type == 'manual_instruction':
         return process_instruction_document(doc_id, content)
+    elif doc_type == 'knowledge_base':
+        return process_knowledge_document(doc_id, content)
     else:
-        # For other knowledge, just mark as processed
+        # For other types, just mark as processed
         db.update_document_status(doc_id, 'processed')
         return True
 
@@ -232,7 +246,7 @@ def analyze_manual_document(doc_id, doc_type):
 def process_faq_document(doc_id, content):
     """
     Process uploaded FAQ document
-    Try to extract Q&A pairs using OpenAI
+    Extract Q&A pairs and add them as questions/answers
     """
     if not client:
         db.update_document_status(doc_id, 'error', 'OpenAI API key not configured')
@@ -244,14 +258,102 @@ def process_faq_document(doc_id, content):
             messages=[
                 {
                     "role": "system",
-                    "content": "Extract all question-answer pairs from the document. Return only valid JSON. Always respond in English."
+                    "content": "Extract all question-answer pairs from the document. Return only valid JSON without markdown. Always respond in English."
                 },
                 {
                     "role": "user",
                     "content": f"""Extract all questions and answers from this FAQ document.
+For each Q&A pair, also determine the topic category:
+- Device Issues
+- Software & Apps
+- Account & Billing
+- Connectivity
+- Store & Pickup
+- General Inquiry
 
-Return JSON in format (without markdown):
-{{"faq": [{{"question": "question text", "answer": "answer text"}}]}}
+Return JSON (without markdown):
+{{"faq": [{{"question": "question text", "answer": "answer text", "topic": "category"}}]}}
+
+Document:
+{content}"""
+                }
+            ],
+            temperature=0.1,
+            max_tokens=4000
+        )
+
+        result_text = response.choices[0].message.content.strip()
+        if result_text.startswith("```"):
+            lines = result_text.split("\n")
+            lines = [l for l in lines if not l.strip().startswith("```")]
+            result_text = "\n".join(lines).strip()
+
+        result = json.loads(result_text)
+
+        for item in result.get('faq', []):
+            question_text = item.get('question', '').strip()
+            answer_text = item.get('answer', '').strip()
+            topic_name = item.get('topic', 'General Inquiry')
+
+            if question_text and answer_text:
+                # Get topic ID
+                topic = db.get_topic_by_name(topic_name)
+                if not topic:
+                    topic = db.get_topic_by_name('General Inquiry')
+                topic_id = topic['id'] if topic else 1
+
+                # Check for similar existing question
+                match_result = embeddings.find_similar_question(question_text)
+
+                if match_result and match_result.get('question_id'):
+                    question_id = match_result['question_id']
+                    db.add_question_variant(question_id, question_text, doc_id)
+                    db.increment_question_asked(question_id)
+                else:
+                    embedding = match_result.get('embedding') if match_result else None
+                    question_id = db.add_question(topic_id, question_text, embedding)
+
+                # Add answer (from FAQ, assume it's a good answer)
+                db.add_answer(
+                    question_id=question_id,
+                    answer_text=answer_text,
+                    source_document_id=doc_id,
+                    resolution_status='resolved',
+                    customer_satisfaction='positive'
+                )
+
+        db.update_document_status(doc_id, 'processed')
+        return True
+
+    except Exception as e:
+        logger.error(f"Error processing FAQ document: {e}")
+        db.update_document_status(doc_id, 'error', str(e))
+        return False
+
+
+def process_instruction_document(doc_id, content):
+    """
+    Process instruction document
+    Add to knowledge base
+    """
+    if not client:
+        db.update_document_status(doc_id, 'error', 'OpenAI API key not configured')
+        return False
+
+    try:
+        response = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Extract key instructions and rules from the document. Return only valid JSON without markdown. Always respond in English."
+                },
+                {
+                    "role": "user",
+                    "content": f"""Extract key instructions, rules and recommendations from this document.
+
+Return JSON (without markdown):
+{{"items": [{{"title": "short title", "content": "instruction text", "category": "category name"}}]}}
 
 Document:
 {content}"""
@@ -269,25 +371,32 @@ Document:
 
         result = json.loads(result_text)
 
-        for item in result.get('faq', []):
-            if item.get('question') and item.get('answer'):
-                db.add_or_update_faq(item['question'], item['answer'], doc_id)
-                db.add_fact(doc_id, 'question', 'faq', item['question'])
-                db.add_fact(doc_id, 'answer', 'faq', item['answer'])
+        for item in result.get('items', []):
+            title = item.get('title', 'Instruction')
+            content_text = item.get('content', '')
+            category = item.get('category', 'General')
+
+            if content_text:
+                db.add_knowledge(
+                    title=title,
+                    content=content_text,
+                    category=category,
+                    source_document_id=doc_id
+                )
 
         db.update_document_status(doc_id, 'processed')
         return True
 
     except Exception as e:
-        logger.error(f"Error processing FAQ document: {e}")
+        logger.error(f"Error processing instruction document: {e}")
         db.update_document_status(doc_id, 'error', str(e))
         return False
 
 
-def process_instruction_document(doc_id, content):
+def process_knowledge_document(doc_id, content):
     """
-    Process instruction document
-    Store key points as facts
+    Process knowledge base document
+    Extract and store knowledge entries
     """
     if not client:
         db.update_document_status(doc_id, 'error', 'OpenAI API key not configured')
@@ -299,21 +408,22 @@ def process_instruction_document(doc_id, content):
             messages=[
                 {
                     "role": "system",
-                    "content": "Extract key instructions and rules from the document. Return only valid JSON. Always respond in English."
+                    "content": "Extract knowledge entries from the document. Return only valid JSON without markdown. Always respond in English."
                 },
                 {
                     "role": "user",
-                    "content": f"""Extract key instructions, rules and recommendations from this document.
+                    "content": f"""Extract key information, facts, and knowledge from this document.
+Break it into logical sections/entries.
 
 Return JSON (without markdown):
-{{"instructions": [{{"topic": "topic", "instruction": "instruction text"}}]}}
+{{"entries": [{{"title": "entry title", "content": "detailed content", "category": "category name"}}]}}
 
 Document:
 {content}"""
                 }
             ],
             temperature=0.1,
-            max_tokens=2000
+            max_tokens=4000
         )
 
         result_text = response.choices[0].message.content.strip()
@@ -324,18 +434,44 @@ Document:
 
         result = json.loads(result_text)
 
-        for item in result.get('instructions', []):
-            db.add_fact(
-                doc_id,
-                'instruction',
-                item.get('topic', 'general'),
-                item.get('instruction', '')
-            )
+        for entry in result.get('entries', []):
+            title = entry.get('title', 'Knowledge Entry')
+            content_text = entry.get('content', '')
+            category = entry.get('category', 'General')
+
+            if content_text:
+                db.add_knowledge(
+                    title=title,
+                    content=content_text,
+                    category=category,
+                    source_document_id=doc_id
+                )
 
         db.update_document_status(doc_id, 'processed')
         return True
 
     except Exception as e:
-        logger.error(f"Error processing instruction document: {e}")
+        logger.error(f"Error processing knowledge document: {e}")
         db.update_document_status(doc_id, 'error', str(e))
         return False
+
+
+def reprocess_all_documents():
+    """
+    Reprocess all documents with new analysis logic
+    Used for migration or after system updates
+    """
+    logger.info("Starting reprocessing of all documents...")
+
+    with db.get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE documents SET status = 'pending'
+            WHERE type = 'transcription' AND content IS NOT NULL
+        """)
+        updated = cursor.rowcount
+
+    logger.info(f"Reset {updated} documents to pending status")
+
+    # Now process them
+    return process_pending_documents()

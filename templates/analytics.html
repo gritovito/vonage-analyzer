@@ -14,20 +14,28 @@
 <!-- Overview Stats -->
 <div class="stats-grid">
     <div class="stat-card">
-        <div class="stat-value">{{ stats.total_documents }}</div>
-        <div class="stat-label">Total Documents</div>
+        <div class="stat-value">{{ stats.total_questions }}</div>
+        <div class="stat-label">Questions</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_answers }}</div>
+        <div class="stat-label">Answers</div>
+    </div>
+    <div class="stat-card stat-processed">
+        <div class="stat-value">{{ stats.resolved_count }}</div>
+        <div class="stat-label">Resolved</div>
+    </div>
+    <div class="stat-card stat-error">
+        <div class="stat-value">{{ stats.unresolved_count }}</div>
+        <div class="stat-label">Unresolved</div>
     </div>
     <div class="stat-card">
         <div class="stat-value">{{ stats.total_transcriptions }}</div>
         <div class="stat-label">Transcriptions</div>
     </div>
     <div class="stat-card">
-        <div class="stat-value">{{ stats.total_facts }}</div>
-        <div class="stat-label">Facts Extracted</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-value">{{ stats.total_faq }}</div>
-        <div class="stat-label">FAQ Entries</div>
+        <div class="stat-value">{{ stats.total_knowledge }}</div>
+        <div class="stat-label">Knowledge Items</div>
     </div>
 </div>
 
@@ -43,14 +51,24 @@
         </div>
     </div>
 
-    <!-- Facts by Category -->
+    <!-- Questions by Topic -->
     <div class="card">
         <div class="card-header">
-            <h2>Facts by Category</h2>
+            <h2>Questions by Topic</h2>
         </div>
         <div class="card-body">
-            <canvas id="categoryChart"></canvas>
+            <canvas id="topicChart"></canvas>
         </div>
+    </div>
+</div>
+
+<!-- Resolution Chart -->
+<div class="card">
+    <div class="card-header">
+        <h2>Resolution Rate (Last 30 Days)</h2>
+    </div>
+    <div class="card-body">
+        <canvas id="resolutionChart" style="max-height: 300px;"></canvas>
     </div>
 </div>
 
@@ -65,9 +83,11 @@
             <thead>
                 <tr>
                     <th>Date</th>
-                    <th>Calls Processed</th>
-                    <th>New Facts</th>
-                    <th>New FAQ</th>
+                    <th>Calls</th>
+                    <th>New Questions</th>
+                    <th>New Answers</th>
+                    <th>Resolved</th>
+                    <th>Unresolved</th>
                 </tr>
             </thead>
             <tbody>
@@ -75,14 +95,16 @@
                 <tr>
                     <td>{{ s.date }}</td>
                     <td>{{ s.total_calls }}</td>
-                    <td>{{ s.new_facts }}</td>
-                    <td>{{ s.new_faq }}</td>
+                    <td>{{ s.new_questions }}</td>
+                    <td>{{ s.new_answers }}</td>
+                    <td><span class="badge badge-processed">{{ s.resolved_count }}</span></td>
+                    <td><span class="badge badge-error">{{ s.unresolved_count }}</span></td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
         {% else %}
-        <p class="empty-state">No data available yet</p>
+        <p class="empty-state">No data available yet. Process some call transcriptions to see analytics.</p>
         {% endif %}
     </div>
 </div>
@@ -107,10 +129,10 @@ new Chart(activityCtx, {
             fill: true,
             tension: 0.3
         }, {
-            label: 'Facts Extracted',
-            data: chartData.facts,
-            borderColor: '#5cb85c',
-            backgroundColor: 'rgba(92, 184, 92, 0.1)',
+            label: 'New Questions',
+            data: chartData.questions,
+            borderColor: '#9b59b6',
+            backgroundColor: 'rgba(155, 89, 182, 0.1)',
             fill: true,
             tension: 0.3
         }]
@@ -130,28 +152,27 @@ new Chart(activityCtx, {
     }
 });
 
-// Category Chart
-const categoryData = {
-    {% for cat in facts_by_category %}
-    '{{ cat.category }}': {{ cat.count }},
+// Topic Chart
+const topicData = {
+    {% for topic in questions_by_topic %}
+    '{{ topic.icon }} {{ topic.name }}': {{ topic.count }},
     {% endfor %}
 };
 
-const categoryCtx = document.getElementById('categoryChart').getContext('2d');
-new Chart(categoryCtx, {
+const topicCtx = document.getElementById('topicChart').getContext('2d');
+new Chart(topicCtx, {
     type: 'doughnut',
     data: {
-        labels: Object.keys(categoryData),
+        labels: Object.keys(topicData),
         datasets: [{
-            data: Object.values(categoryData),
+            data: Object.values(topicData),
             backgroundColor: [
-                '#4a90d9',
-                '#5cb85c',
-                '#f0ad4e',
-                '#d9534f',
-                '#5bc0de',
+                '#e74c3c',
+                '#3498db',
+                '#2ecc71',
                 '#9b59b6',
-                '#34495e'
+                '#f39c12',
+                '#95a5a6'
             ]
         }]
     },
@@ -160,6 +181,41 @@ new Chart(categoryCtx, {
         plugins: {
             legend: {
                 position: 'bottom'
+            }
+        }
+    }
+});
+
+// Resolution Chart
+const resolutionCtx = document.getElementById('resolutionChart').getContext('2d');
+new Chart(resolutionCtx, {
+    type: 'bar',
+    data: {
+        labels: chartData.dates,
+        datasets: [{
+            label: 'Resolved',
+            data: chartData.resolved,
+            backgroundColor: '#28a745'
+        }, {
+            label: 'Unresolved',
+            data: chartData.unresolved,
+            backgroundColor: '#dc3545'
+        }]
+    },
+    options: {
+        responsive: true,
+        plugins: {
+            legend: {
+                position: 'bottom'
+            }
+        },
+        scales: {
+            x: {
+                stacked: true
+            },
+            y: {
+                stacked: true,
+                beginAtZero: true
             }
         }
     }

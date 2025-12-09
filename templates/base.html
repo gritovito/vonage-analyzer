@@ -3,22 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Call Analyzer{% endblock %}</title>
+    <title>{% block title %}Call Analyzer v2.0{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     {% block head %}{% endblock %}
 </head>
 <body>
     <nav class="navbar">
         <div class="nav-brand">
-            <a href="{{ url_for('index') }}">Call Analyzer</a>
+            <a href="{{ url_for('index') }}">Call Analyzer <span class="version">v2.0</span></a>
         </div>
         <ul class="nav-links">
             <li><a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">Dashboard</a></li>
-            <li><a href="{{ url_for('documents') }}" class="{% if request.endpoint == 'documents' %}active{% endif %}">Documents</a></li>
-            <li><a href="{{ url_for('upload') }}" class="{% if request.endpoint == 'upload' %}active{% endif %}">Upload</a></li>
-            <li><a href="{{ url_for('faq') }}" class="{% if request.endpoint == 'faq' %}active{% endif %}">FAQ</a></li>
-            <li><a href="{{ url_for('facts') }}" class="{% if request.endpoint == 'facts' %}active{% endif %}">Facts</a></li>
+            <li><a href="{{ url_for('solutions') }}" class="{% if request.endpoint in ['solutions', 'solution_detail'] %}active{% endif %}">Solutions</a></li>
+            <li><a href="{{ url_for('knowledge') }}" class="{% if request.endpoint == 'knowledge' %}active{% endif %}">Knowledge Base</a></li>
             <li><a href="{{ url_for('search') }}" class="{% if request.endpoint == 'search' %}active{% endif %}">Search</a></li>
+            <li><a href="{{ url_for('documents') }}" class="{% if request.endpoint in ['documents', 'document_detail'] %}active{% endif %}">Documents</a></li>
+            <li><a href="{{ url_for('upload') }}" class="{% if request.endpoint == 'upload' %}active{% endif %}">Upload</a></li>
             <li><a href="{{ url_for('analytics') }}" class="{% if request.endpoint == 'analytics' %}active{% endif %}">Analytics</a></li>
         </ul>
     </nav>
@@ -36,7 +36,7 @@
     </main>
 
     <footer class="footer">
-        <p>Call Analyzer - Self-learning Help Desk System</p>
+        <p>Call Analyzer v2.0 - Self-learning Help Desk with Semantic Matching</p>
     </footer>
 
     {% block scripts %}{% endblock %}

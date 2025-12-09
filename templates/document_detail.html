@@ -36,7 +36,7 @@
             </div>
 
             {% if document.status == 'pending' or document.status == 'error' %}
-            <div class="actions">
+            <div class="actions" style="margin-top: 1rem;">
                 <button onclick="processDoc({{ document.id }})" class="btn btn-primary">Process Now</button>
             </div>
             {% endif %}
@@ -49,6 +49,69 @@
         </div>
     </div>
 
+    <!-- Analysis Result -->
+    {% if analysis %}
+    <div class="card">
+        <div class="card-header">
+            <h2>Analysis Result</h2>
+        </div>
+        <div class="card-body">
+            <div class="analysis-grid">
+                {% if analysis.topic %}
+                <div class="analysis-item">
+                    <span class="analysis-label">Topic:</span>
+                    <span class="badge badge-type">{{ analysis.topic }}</span>
+                </div>
+                {% endif %}
+                {% if analysis.resolution %}
+                <div class="analysis-item">
+                    <span class="analysis-label">Resolution:</span>
+                    <span class="badge badge-{{ analysis.resolution }}">{{ analysis.resolution }}</span>
+                </div>
+                {% endif %}
+                {% if analysis.satisfaction %}
+                <div class="analysis-item">
+                    <span class="analysis-label">Satisfaction:</span>
+                    <span class="badge badge-{{ analysis.satisfaction }}">{{ analysis.satisfaction }}</span>
+                </div>
+                {% endif %}
+            </div>
+
+            {% if analysis.problem %}
+            <div class="analysis-section">
+                <h4>Problem:</h4>
+                <p>{{ analysis.problem }}</p>
+            </div>
+            {% endif %}
+
+            {% if analysis.solution %}
+            <div class="analysis-section">
+                <h4>Solution:</h4>
+                <p>{{ analysis.solution }}</p>
+            </div>
+            {% endif %}
+
+            {% if analysis.summary %}
+            <div class="analysis-section">
+                <h4>Summary:</h4>
+                <p>{{ analysis.summary }}</p>
+            </div>
+            {% endif %}
+
+            {% if analysis.problem_keywords %}
+            <div class="analysis-section">
+                <h4>Keywords:</h4>
+                <div class="keywords">
+                    {% for kw in analysis.problem_keywords %}
+                    <span class="badge badge-category">{{ kw }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Document Content -->
     <div class="card">
         <div class="card-header">
@@ -58,37 +121,61 @@
             <pre class="content-preview">{{ document.content if document.content else 'No content' }}</pre>
         </div>
     </div>
-
-    <!-- Extracted Facts -->
-    {% if facts %}
-    <div class="card">
-        <div class="card-header">
-            <h2>Extracted Facts ({{ facts|length }})</h2>
-        </div>
-        <div class="card-body">
-            <table class="table">
-                <thead>
-                    <tr>
-                        <th>Category</th>
-                        <th>Key</th>
-                        <th>Value</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for fact in facts %}
-                    <tr>
-                        <td><span class="badge badge-category">{{ fact.category }}</span></td>
-                        <td>{{ fact.key|truncate_text(50) if fact.key else '-' }}</td>
-                        <td>{{ fact.value|truncate_text(200) }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-    {% endif %}
 </div>
 
+{% endblock %}
+
+{% block head %}
+<style>
+.analysis-grid {
+    display: flex;
+    gap: 2rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.analysis-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.analysis-label {
+    font-weight: 500;
+    color: #666;
+}
+
+.analysis-section {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid #eee;
+}
+
+.analysis-section h4 {
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 0.5rem;
+}
+
+.analysis-section p {
+    color: #333;
+    line-height: 1.6;
+}
+
+.keywords {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.badge-resolved { background: #d4edda; color: #155724; }
+.badge-partial { background: #fff3cd; color: #856404; }
+.badge-unresolved { background: #f8d7da; color: #721c24; }
+.badge-unknown { background: #e9ecef; color: #495057; }
+.badge-positive { background: #d4edda; color: #155724; }
+.badge-neutral { background: #e9ecef; color: #495057; }
+.badge-negative { background: #f8d7da; color: #721c24; }
+</style>
 {% endblock %}
 
 {% block scripts %}

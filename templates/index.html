@@ -3,136 +3,184 @@
 {% block title %}Dashboard - Call Analyzer{% endblock %}
 
 {% block content %}
-<div class="dashboard">
+<div class="page-header">
     <h1>Dashboard</h1>
-
-    <!-- Processing Status Banner -->
-    <div id="processing-banner" class="processing-banner" style="display: none;">
-        <div class="processing-info">
-            <span class="spinner"></span>
-            <span id="processing-text">Processing...</span>
-        </div>
-    </div>
-
-    <!-- Statistics Cards -->
-    <div class="stats-grid">
-        <div class="stat-card">
-            <div class="stat-value">{{ stats.total_documents }}</div>
-            <div class="stat-label">Total Files</div>
-        </div>
-        <div class="stat-card stat-processed">
-            <div class="stat-value">{{ stats.processed_documents }}</div>
-            <div class="stat-label">Processed</div>
-        </div>
-        <div class="stat-card stat-pending">
-            <div class="stat-value" id="pending-count">{{ stats.pending_documents }}</div>
-            <div class="stat-label">In Queue</div>
-        </div>
-        <div class="stat-card stat-error">
-            <div class="stat-value">{{ stats.error_documents }}</div>
-            <div class="stat-label">Errors</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value">{{ stats.total_facts }}</div>
-            <div class="stat-label">Facts</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value">{{ stats.total_faq }}</div>
-            <div class="stat-label">FAQ</div>
-        </div>
-    </div>
-
-    <!-- Quick Actions -->
     <div class="quick-actions-bar">
-        <a href="{{ url_for('upload') }}" class="btn btn-primary">Upload Document</a>
-        <button onclick="triggerScan()" class="btn btn-secondary" id="scan-btn">Scan for New Files</button>
-        <button onclick="processAll()" class="btn btn-success" id="process-btn">Process All Pending</button>
-        <span id="status-text" class="status-text"></span>
+        <button class="btn btn-primary" onclick="scanFiles()" id="scan-btn">Scan for New Files</button>
+        <button class="btn btn-success" onclick="processAll()" id="process-btn">Process All Pending</button>
+        <span class="status-text" id="status-text">
+            {% if processing_status.is_processing %}
+                Processing...
+            {% else %}
+                Ready
+            {% endif %}
+        </span>
+    </div>
+</div>
+
+{% if processing_status.is_processing %}
+<div class="processing-banner" id="processing-banner">
+    <div class="processing-info">
+        <div class="spinner"></div>
+        <span id="processing-text">Processing documents... {{ processing_status.current }}/{{ processing_status.total }}</span>
+    </div>
+</div>
+{% else %}
+<div class="processing-banner" id="processing-banner" style="display: none;">
+    <div class="processing-info">
+        <div class="spinner"></div>
+        <span id="processing-text">Processing...</span>
+    </div>
+</div>
+{% endif %}
+
+<!-- Statistics Cards -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_questions }}</div>
+        <div class="stat-label">Questions</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_answers }}</div>
+        <div class="stat-label">Answers</div>
+    </div>
+    <div class="stat-card stat-processed">
+        <div class="stat-value">{{ stats.resolved_count }}</div>
+        <div class="stat-label">Resolved</div>
+    </div>
+    <div class="stat-card stat-pending">
+        <div class="stat-value" id="pending-count">{{ stats.pending_documents }}</div>
+        <div class="stat-label">Pending</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_transcriptions }}</div>
+        <div class="stat-label">Transcriptions</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">{{ stats.total_knowledge }}</div>
+        <div class="stat-label">Knowledge Items</div>
+    </div>
+</div>
+
+<!-- Main Dashboard Grid -->
+<div class="dashboard-grid">
+    <!-- Questions by Topic -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Questions by Topic</h2>
+            <a href="{{ url_for('solutions') }}" class="btn btn-sm">View All</a>
+        </div>
+        <div class="card-body">
+            {% if questions_by_topic %}
+            <div class="category-list">
+                {% for topic in questions_by_topic %}
+                <a href="{{ url_for('solutions', topic=topic.id) }}" class="category-item">
+                    <span>{{ topic.icon }} {{ topic.name }}</span>
+                    <span class="category-count">{{ topic.count }}</span>
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <p>No questions yet</p>
+            </div>
+            {% endif %}
+        </div>
     </div>
 
-    <div class="dashboard-grid">
-        <!-- Recent Documents -->
-        <div class="card">
-            <div class="card-header">
-                <h2>Recent Documents</h2>
-                <a href="{{ url_for('documents') }}" class="btn btn-sm">View All</a>
-            </div>
-            <div class="card-body">
-                {% if recent_docs %}
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Filename</th>
-                            <th>Type</th>
-                            <th>Status</th>
-                            <th>Date</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for doc in recent_docs %}
-                        <tr>
-                            <td><a href="{{ url_for('document_detail', doc_id=doc.id) }}">{{ doc.filename|truncate_text(40) }}</a></td>
-                            <td><span class="badge badge-type">{{ doc_types.get(doc.type, doc.type) }}</span></td>
-                            <td><span class="badge badge-{{ doc.status }}">{{ doc.status }}</span></td>
-                            <td>{{ doc.created_at|datetime }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                {% else %}
-                <p class="empty-state">No documents yet. <a href="{{ url_for('upload') }}">Upload your first document</a></p>
-                {% endif %}
-            </div>
+    <!-- Top Questions -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Most Asked Questions</h2>
+            <a href="{{ url_for('solutions', sort='times_asked') }}" class="btn btn-sm">View All</a>
         </div>
-
-        <!-- Facts by Category -->
-        <div class="card">
-            <div class="card-header">
-                <h2>Facts by Category</h2>
-                <a href="{{ url_for('facts') }}" class="btn btn-sm">View All</a>
-            </div>
-            <div class="card-body">
-                {% if facts_by_category %}
-                <div class="category-list">
-                    {% for cat in facts_by_category %}
-                    <a href="{{ url_for('facts', category=cat.category) }}" class="category-item">
-                        <span class="category-name">{{ cat.category|title }}</span>
-                        <span class="category-count">{{ cat.count }}</span>
+        <div class="card-body">
+            {% if top_questions %}
+            <div class="faq-list">
+                {% for q in top_questions %}
+                <div class="faq-item">
+                    <a href="{{ url_for('solution_detail', question_id=q.id) }}" class="faq-question">
+                        {{ q.canonical_text|truncate_text(80) }}
                     </a>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <p class="empty-state">No facts extracted yet</p>
-                {% endif %}
-            </div>
-        </div>
-
-        <!-- Top FAQ -->
-        <div class="card">
-            <div class="card-header">
-                <h2>Top Questions</h2>
-                <a href="{{ url_for('faq') }}" class="btn btn-sm">View All</a>
-            </div>
-            <div class="card-body">
-                {% if top_faq %}
-                <div class="faq-list">
-                    {% for item in top_faq %}
-                    <div class="faq-item">
-                        <div class="faq-question">{{ item.question|truncate_text(100) }}</div>
-                        <div class="faq-meta">
-                            <span class="times-asked">Asked {{ item.times_asked }} times</span>
-                        </div>
+                    <div class="faq-meta">
+                        <span class="badge badge-type" style="background: {{ q.topic_color }}20; color: {{ q.topic_color }}">
+                            {{ q.topic_icon }} {{ q.topic_name }}
+                        </span>
+                        <span class="times-asked">{{ q.times_asked }}x asked</span>
                     </div>
-                    {% endfor %}
                 </div>
-                {% else %}
-                <p class="empty-state">No FAQ entries yet</p>
-                {% endif %}
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <p>No questions yet. Process some call transcriptions to generate questions.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Recent Documents -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Recent Documents</h2>
+            <a href="{{ url_for('documents') }}" class="btn btn-sm">View All</a>
+        </div>
+        <div class="card-body">
+            {% if recent_docs %}
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>File</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for doc in recent_docs %}
+                    <tr>
+                        <td>
+                            <a href="{{ url_for('document_detail', doc_id=doc.id) }}">
+                                {{ doc.filename|truncate_text(30) }}
+                            </a>
+                        </td>
+                        <td><span class="badge badge-type">{{ doc_types.get(doc.type, doc.type) }}</span></td>
+                        <td><span class="badge badge-{{ doc.status }}">{{ doc.status }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="empty-state">
+                <p>No documents yet</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Quick Search -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Quick Search</h2>
+        </div>
+        <div class="card-body">
+            <form action="{{ url_for('search') }}" method="get">
+                <div class="search-box">
+                    <input type="text" name="q" class="search-input" placeholder="Search for solutions...">
+                </div>
+                <input type="hidden" name="type" value="semantic">
+                <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 0.5rem;">
+                    Semantic Search
+                </button>
+            </form>
+            <div style="margin-top: 1rem; padding: 1rem; background: #f8f9fa; border-radius: 4px;">
+                <p style="font-size: 0.85rem; color: #666; margin: 0;">
+                    Tip: Use natural language to describe the customer's problem.
+                    Our AI will find semantically similar questions.
+                </p>
             </div>
         </div>
     </div>
 </div>
-
 {% endblock %}
 
 {% block scripts %}
@@ -155,7 +203,7 @@ function showProcessingBanner(show, text) {
     if (text) textEl.textContent = text;
 }
 
-function triggerScan() {
+function scanFiles() {
     setButtonsDisabled(true);
     updateStatus('Scanning for new files...');
 
@@ -200,7 +248,6 @@ function processAll() {
                 updateStatus(data.message);
             } else {
                 updateStatus('Processed ' + data.processed + ' documents, ' + data.errors + ' errors.');
-                // Reload to show updated stats
                 setTimeout(() => location.reload(), 1000);
             }
         })
@@ -211,10 +258,5 @@ function processAll() {
             updateStatus('Processing failed: ' + err);
         });
 }
-
-// Check initial status
-{% if processing_status.is_processing %}
-showProcessingBanner(true, 'Background processing in progress...');
-{% endif %}
 </script>
 {% endblock %}
