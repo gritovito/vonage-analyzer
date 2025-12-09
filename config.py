@@ -43,16 +43,36 @@ CLUSTERS = [
     "General Inquiry"
 ]
 
-# Stage 1: Classification prompt
+# Stage 1: Classification prompt with subcategories
 CLASSIFICATION_PROMPT = """Analyze this customer support call transcript.
 
 Extract:
-1. CLUSTER: Category [Messaging, Calls & Voice, Data & Internet, Device Issues, Apps & Software, Account & Billing, Store & Service, General Inquiry]
-2. CUSTOMER_QUESTION: The main question/problem (generalized, no specific names/numbers)
+1. CLUSTER: Main category (choose one):
+   - Device Issues
+   - Messaging
+   - Calls & Voice
+   - Data & Internet
+   - Apps & Software
+   - Account & Billing
+   - Store & Service
+   - General Inquiry
+
+2. SUBCATEGORY: Specific subcategory based on cluster:
+   Device Issues: Battery & Charging, Screen & Display, Audio & Sound, Power & Boot, Buttons & Controls, Camera, Physical Damage
+   Messaging: SMS Text Messages, MMS & Media Messages, Group Messages, Messaging Apps
+   Calls & Voice: Can't Make Calls, Can't Receive Calls, Call Quality, Voicemail
+   Data & Internet: No Data Connection, Slow Data, WiFi Issues, Hotspot
+   Apps & Software: App Crashes, Software Updates, Settings Issues, Storage
+   Account & Billing: Bill Questions, Payment Issues, Plan Changes, Account Access
+   Store & Service: Store Visit, Device Repair, Order Pickup, Warranty
+   General Inquiry: Product Information, Service Questions, Other
+
+3. QUESTION: The main customer problem (generalized, no names/numbers)
 
 Return JSON only (no markdown):
 {
-  "cluster": "category",
+  "cluster": "category name",
+  "subcategory": "subcategory name",
   "question": "generalized customer question"
 }
 

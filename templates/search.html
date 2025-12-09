@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Search - Knowledge Hub{% endblock %}
+{% block title %}Search - Response Scripts Library{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -10,12 +10,16 @@
 <!-- Search Form -->
 <div class="search-container">
     <form method="GET" class="search-form">
-        <input type="text" name="q" value="{{ query }}" placeholder="Describe the customer's problem..." class="search-input-large" autofocus>
+        <div class="search-input-wrapper">
+            <input type="text" name="q" value="{{ query }}" placeholder="Describe the customer problem..."
+                   class="search-input-large" id="searchInput" autocomplete="off" autofocus>
+            <div class="autocomplete-dropdown" id="autocompleteDropdown"></div>
+        </div>
         <select name="type" class="search-type-select">
-            <option value="semantic" {% if search_type == 'semantic' %}selected{% endif %}>Semantic Search (AI)</option>
+            <option value="semantic" {% if search_type == 'semantic' %}selected{% endif %}>Semantic (AI)</option>
             <option value="text" {% if search_type == 'text' %}selected{% endif %}>Text Search</option>
         </select>
-        <button type="submit" class="btn btn-primary">Search</button>
+        <button type="submit" class="btn btn-primary btn-lg">Search</button>
     </form>
 </div>
 
@@ -23,229 +27,136 @@
 <!-- Results -->
 <div class="search-results">
     {% if results and results.questions %}
-        <div class="result-section">
-            <h2>{% if results.is_semantic %}Similar Questions{% else %}Matching Questions{% endif %} ({{ results.questions|length }})</h2>
-            {% if results.is_semantic %}
-            <p class="result-description">Questions semantically similar to your query. Click Copy to use the best script.</p>
-            {% endif %}
-            <div class="result-list">
-                {% for item in results.questions %}
-                <div class="result-item {% if results.is_semantic %}semantic-result{% endif %}">
-                    {% if results.is_semantic %}
-                    <div class="similarity-score">
-                        <div class="score-circle" style="--score: {{ item.similarity }}">
-                            {{ item.similarity }}%
-                        </div>
-                        <span class="score-label">match</span>
-                    </div>
-                    {% endif %}
-                    <div class="result-content-area">
-                        <a href="{{ url_for('question_detail', question_id=item.id) }}" class="result-title">
-                            {{ item.canonical_text }}
-                        </a>
-                        <div class="result-meta">
-                            <span class="cluster-badge" style="background-color: {{ item.cluster_color }}">
-                                {{ item.cluster_icon }} {{ item.cluster_name }}
-                            </span>
-                            <span class="times-asked">{{ item.times_asked }}x asked</span>
-                            <span class="status-badge status-{{ item.status }}">{{ item.status }}</span>
-                            {% if item.script_count %}
-                            <span class="script-count">{{ item.script_count }} scripts</span>
-                            {% endif %}
-                        </div>
+        <div class="results-header">
+            <h2>{% if results.is_semantic %}Similar Questions{% else %}Matching Questions{% endif %}</h2>
+            <span class="results-count">{{ results.questions|length }} results</span>
+        </div>
 
-                        <!-- Best Script Preview -->
-                        {% if item.best_script %}
-                        <div class="best-script-preview">
-                            <div class="script-preview-header">
-                                <span class="best-label">Best Response ({{ item.best_script.effectiveness|round(0)|int }}%)</span>
-                                <button onclick="copyScript({{ item.best_script.id }})" class="btn-copy-small">Copy</button>
-                            </div>
-                            <div class="script-preview-text">{{ item.best_script.text|truncate(200) }}</div>
-                        </div>
+        {% if results.is_semantic %}
+        <p class="results-hint">Questions semantically similar to your query. Click "Copy" to copy the best script.</p>
+        {% endif %}
+
+        <div class="results-list">
+            {% for item in results.questions %}
+            <div class="result-card {% if results.is_semantic %}semantic{% endif %}">
+                {% if results.is_semantic %}
+                <div class="similarity-badge">
+                    <span class="similarity-value">{{ item.similarity }}%</span>
+                    <span class="similarity-label">match</span>
+                </div>
+                {% endif %}
+
+                <div class="result-content">
+                    <a href="{{ url_for('question_detail', question_id=item.id) }}" class="result-title">
+                        {{ item.canonical_text }}
+                    </a>
+
+                    <div class="result-meta">
+                        <span class="cluster-tag" style="background-color: {{ item.cluster_color }}20; color: {{ item.cluster_color }}">
+                            {{ item.cluster_icon }} {{ item.cluster_name }}
+                        </span>
+                        <span class="times-asked">{{ item.times_asked }}x asked</span>
+                        <span class="status-badge status-{{ item.status }}">{{ item.status }}</span>
+                        {% if item.script_count %}
+                        <span class="script-count">{{ item.script_count }} scripts</span>
                         {% endif %}
                     </div>
+
+                    {% if item.best_script %}
+                    <div class="best-script-card">
+                        <div class="script-header">
+                            <span class="script-badge">Best Response ({{ item.best_script.effectiveness|round(0)|int }}%)</span>
+                            <button onclick="copyScript({{ item.best_script.id }})" class="btn-copy">Copy</button>
+                        </div>
+                        <div class="script-preview">{{ item.best_script.text|truncate(250) }}</div>
+                    </div>
+                    {% endif %}
                 </div>
-                {% endfor %}
             </div>
+            {% endfor %}
         </div>
     {% else %}
-    <div class="empty-state">
+    <div class="empty-results">
         <h3>No results found</h3>
-        <p>Try different keywords or {% if search_type == 'semantic' %}use text search{% else %}use semantic search{% endif %}.</p>
+        <p>Try different keywords or {% if search_type == 'semantic' %}switch to text search{% else %}switch to semantic search{% endif %}.</p>
     </div>
     {% endif %}
 </div>
 {% else %}
 <!-- Search Tips -->
-<div class="search-tips">
+<div class="search-tips-section">
     <h2>Search Tips</h2>
-    <ul>
-        <li><strong>Semantic Search (AI):</strong> Describe the problem in natural language. Our AI will find questions with similar meaning.</li>
-        <li><strong>Text Search:</strong> Find exact keyword matches in questions.</li>
-        <li>Example: "phone won't turn on" will match "device not powering up" in semantic search.</li>
-        <li><strong>Quick Copy:</strong> Click "Copy" next to any result to copy the best response script to your clipboard.</li>
-    </ul>
+    <div class="tips-grid">
+        <div class="tip-card">
+            <div class="tip-icon">AI</div>
+            <h3>Semantic Search</h3>
+            <p>Describe the problem in natural language. AI finds questions with similar meaning.</p>
+            <code>"phone won't turn on"</code> matches <code>"device not powering up"</code>
+        </div>
+        <div class="tip-card">
+            <div class="tip-icon">Aa</div>
+            <h3>Text Search</h3>
+            <p>Find exact keyword matches. Good for specific terms.</p>
+            <code>"charging"</code> finds all questions with that word
+        </div>
+        <div class="tip-card">
+            <div class="tip-icon">C</div>
+            <h3>Quick Copy</h3>
+            <p>Click "Copy" to copy the best response script to clipboard instantly.</p>
+        </div>
+    </div>
 </div>
 {% endif %}
 
-<!-- Copy Success Toast -->
+<!-- Toast notification -->
 <div id="toast" class="toast">Copied to clipboard!</div>
-{% endblock %}
-
-{% block head %}
-<style>
-.search-type-select {
-    padding: 1rem;
-    font-size: 1rem;
-    border: 2px solid #ddd;
-    border-radius: 8px;
-    background: white;
-    min-width: 180px;
-}
-
-.result-description {
-    color: #666;
-    margin-bottom: 1rem;
-    font-size: 0.9rem;
-}
-
-.semantic-result {
-    display: flex;
-    gap: 1.5rem;
-    align-items: flex-start;
-}
-
-.similarity-score {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    min-width: 70px;
-}
-
-.score-circle {
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: bold;
-    font-size: 0.9rem;
-    background: conic-gradient(
-        #4a90d9 calc(var(--score) * 1%),
-        #e9ecef calc(var(--score) * 1%)
-    );
-    position: relative;
-}
-
-.score-circle::before {
-    content: '';
-    position: absolute;
-    width: 50px;
-    height: 50px;
-    background: white;
-    border-radius: 50%;
-}
-
-.score-label {
-    font-size: 0.75rem;
-    color: #888;
-    margin-top: 0.25rem;
-}
-
-.result-content-area {
-    flex: 1;
-}
-
-.result-content-area .result-title {
-    font-size: 1.1rem;
-    display: block;
-    margin-bottom: 0.5rem;
-}
-
-.result-meta {
-    display: flex;
-    gap: 0.75rem;
-    align-items: center;
-    flex-wrap: wrap;
-    margin-bottom: 0.75rem;
-}
-
-.script-count {
-    color: #28a745;
-    font-weight: 500;
-    font-size: 0.85rem;
-}
-
-/* Best Script Preview */
-.best-script-preview {
-    background: #f0fff0;
-    border: 1px solid #c3e6cb;
-    border-radius: 8px;
-    padding: 12px;
-    margin-top: 12px;
-}
-
-.script-preview-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
-}
-
-.best-label {
-    color: #28a745;
-    font-weight: bold;
-    font-size: 0.85rem;
-}
-
-.btn-copy-small {
-    background: #007bff;
-    color: white;
-    border: none;
-    padding: 6px 16px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.85rem;
-    font-weight: 500;
-    transition: all 0.2s;
-}
-
-.btn-copy-small:hover {
-    background: #0056b3;
-}
-
-.script-preview-text {
-    color: #333;
-    line-height: 1.5;
-    font-size: 0.95rem;
-    white-space: pre-wrap;
-}
-
-/* Toast notification */
-.toast {
-    position: fixed;
-    bottom: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: #333;
-    color: white;
-    padding: 12px 24px;
-    border-radius: 8px;
-    opacity: 0;
-    transition: opacity 0.3s;
-    z-index: 1000;
-}
-
-.toast.show {
-    opacity: 1;
-}
-</style>
 {% endblock %}
 
 {% block scripts %}
 <script>
+// Autocomplete
+const searchInput = document.getElementById('searchInput');
+const dropdown = document.getElementById('autocompleteDropdown');
+let debounceTimer;
+
+if (searchInput) {
+    searchInput.addEventListener('input', function() {
+        clearTimeout(debounceTimer);
+        const query = this.value.trim();
+
+        if (query.length < 2) {
+            dropdown.style.display = 'none';
+            return;
+        }
+
+        debounceTimer = setTimeout(() => {
+            fetch('/api/autocomplete?q=' + encodeURIComponent(query))
+                .then(r => r.json())
+                .then(suggestions => {
+                    if (suggestions.length === 0) {
+                        dropdown.style.display = 'none';
+                        return;
+                    }
+
+                    dropdown.innerHTML = suggestions.map(s =>
+                        `<div class="autocomplete-item" onclick="selectSuggestion('${s.replace(/'/g, "\\'")}')">${s}</div>`
+                    ).join('');
+                    dropdown.style.display = 'block';
+                });
+        }, 200);
+    });
+
+    searchInput.addEventListener('blur', () => {
+        setTimeout(() => dropdown.style.display = 'none', 200);
+    });
+}
+
+function selectSuggestion(text) {
+    searchInput.value = text;
+    dropdown.style.display = 'none';
+    searchInput.closest('form').submit();
+}
+
 function copyScript(id) {
     fetch('/api/script/' + id + '/copy')
         .then(r => r.json())
@@ -254,7 +165,6 @@ function copyScript(id) {
                 navigator.clipboard.writeText(data.text).then(() => {
                     showToast('Copied to clipboard!');
                 }).catch(() => {
-                    // Fallback for older browsers
                     const textarea = document.createElement('textarea');
                     textarea.value = data.text;
                     document.body.appendChild(textarea);

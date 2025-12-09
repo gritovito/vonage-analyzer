@@ -149,64 +149,55 @@ def clusters():
 
 @app.route('/cluster/<int:cluster_id>')
 def cluster_detail(cluster_id):
-    """View cluster with questions"""
-    cluster = db.get_cluster(cluster_id)
-    if not cluster:
+    """View cluster with subcategories and top questions"""
+    cluster_data = db.get_cluster_with_subcategories(cluster_id)
+    if not cluster_data:
         flash('Cluster not found', 'error')
         return redirect(url_for('clusters'))
 
+    return render_template('cluster_detail.html',
+                           cluster=cluster_data)
+
+
+@app.route('/subcategory/<int:subcategory_id>')
+def subcategory_detail(subcategory_id):
+    """View subcategory with all questions"""
     page = int(request.args.get('page', 1))
     sort = request.args.get('sort', 'times_asked')
-    status = request.args.get('status')
     per_page = 20
     offset = (page - 1) * per_page
 
-    questions = db.get_questions(cluster_id=cluster_id, status=status, limit=per_page, offset=offset, sort_by=sort)
-    total = db.get_questions_count(cluster_id=cluster_id, status=status)
+    subcategory = db.get_subcategory(subcategory_id)
+    if not subcategory:
+        flash('Subcategory not found', 'error')
+        return redirect(url_for('clusters'))
+
+    questions = db.get_questions(subcategory_id=subcategory_id, limit=per_page, offset=offset, sort_by=sort)
+    total = db.get_questions_count(subcategory_id=subcategory_id)
     total_pages = (total + per_page - 1) // per_page
 
-    return render_template('cluster_detail.html',
-                           cluster=cluster,
+    return render_template('subcategory_detail.html',
+                           subcategory=subcategory,
                            questions=questions,
                            page=page,
                            total_pages=total_pages,
                            total=total,
-                           sort=sort,
-                           current_status=status)
+                           sort=sort)
 
 
 @app.route('/question/<int:question_id>')
 def question_detail(question_id):
     """View single question with all scripts"""
-    question = db.get_question(question_id)
-    if not question:
+    question_data = db.get_question_detail(question_id)
+    if not question_data:
         flash('Question not found', 'error')
         return redirect(url_for('index'))
 
-    # Get scripts (v3) - primary
-    scripts = db.get_scripts(question_id)
-    best_script = None
-    other_scripts = []
-
-    for s in scripts:
-        if s['is_best']:
-            best_script = s
-        else:
-            other_scripts.append(s)
-
-    # Get variants
-    variants = db.get_question_variants(question_id)
-
-    # Legacy answers (for compatibility)
-    answers = db.get_answers(question_id)
-
     return render_template('question_detail.html',
-                           question=question,
-                           best_script=best_script,
-                           other_scripts=other_scripts,
-                           scripts=scripts,
-                           variants=variants,
-                           answers=answers)
+                           question=question_data,
+                           best_script=question_data.get('best_script'),
+                           other_scripts=question_data.get('other_scripts', []),
+                           variants=question_data.get('variants', []))
 
 
 @app.route('/search')
@@ -468,6 +459,17 @@ def api_search():
     else:
         questions = [dict(q) for q in db.search_questions_text(query)]
         return jsonify({'questions': questions, 'is_semantic': False})
+
+
+@app.route('/api/autocomplete')
+def api_autocomplete():
+    """Autocomplete suggestions for search"""
+    query = request.args.get('q', '')
+    if len(query) < 2:
+        return jsonify([])
+
+    suggestions = db.get_autocomplete_suggestions(query, limit=5)
+    return jsonify(suggestions)
 
 
 @app.route('/api/question/<int:question_id>/answers')

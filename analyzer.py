@@ -153,7 +153,7 @@ def analyze_transcription(content):
 def process_document(doc_id):
     """
     Process a single document with two-stage analysis:
-    Stage 1: Classification (cluster + question)
+    Stage 1: Classification (cluster + subcategory + question)
     Stage 2: Script extraction (actual operator responses)
     """
     doc = db.get_document(doc_id)
@@ -180,6 +180,7 @@ def process_document(doc_id):
         return False
 
     cluster_name = classification.get('cluster', 'General Inquiry')
+    subcategory_name = classification.get('subcategory', 'Other')
     question_text = classification.get('question', '')
 
     if not question_text:
@@ -198,6 +199,9 @@ def process_document(doc_id):
         cluster = db.get_cluster_by_name('General Inquiry')
     cluster_id = cluster['id'] if cluster else 1
 
+    # Get or create subcategory
+    subcategory_id = db.get_or_create_subcategory(cluster_id, subcategory_name)
+
     # Find or create question using semantic matching
     match_result = embeddings.find_similar_question(question_text)
     new_question = False
@@ -210,9 +214,9 @@ def process_document(doc_id):
         db.increment_question_asked(question_id)
     else:
         embedding = match_result.get('embedding') if match_result else None
-        question_id = db.add_question(cluster_id, question_text, embedding)
+        question_id = db.add_question(cluster_id, question_text, embedding, subcategory_id=subcategory_id)
         new_question = True
-        logger.info(f"Created new question (id={question_id}) in cluster '{cluster_name}'")
+        logger.info(f"Created new question (id={question_id}) in cluster '{cluster_name}' / subcategory '{subcategory_name}'")
 
     # Stage 2: Script extraction
     extraction = extract_scripts(content)

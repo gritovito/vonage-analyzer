@@ -1,6 +1,6 @@
 """
-Knowledge Hub Database - Response Scripts Library (v3)
-SQLite database with semantic clustering and operator script extraction
+Knowledge Hub Database v3.1 - Response Scripts Library with Subcategories
+SQLite database with hierarchical categorization and operator script extraction
 """
 import sqlite3
 import os
@@ -11,6 +11,60 @@ from contextlib import contextmanager
 from config import DATABASE_PATH, DATA_DIR
 
 logger = logging.getLogger(__name__)
+
+# Predefined subcategories for each cluster
+SUBCATEGORIES = {
+    "Device Issues": [
+        "Battery & Charging",
+        "Screen & Display",
+        "Audio & Sound",
+        "Power & Boot",
+        "Buttons & Controls",
+        "Camera",
+        "Physical Damage"
+    ],
+    "Messaging": [
+        "SMS Text Messages",
+        "MMS & Media Messages",
+        "Group Messages",
+        "Messaging Apps"
+    ],
+    "Calls & Voice": [
+        "Can't Make Calls",
+        "Can't Receive Calls",
+        "Call Quality",
+        "Voicemail"
+    ],
+    "Data & Internet": [
+        "No Data Connection",
+        "Slow Data",
+        "WiFi Issues",
+        "Hotspot"
+    ],
+    "Apps & Software": [
+        "App Crashes",
+        "Software Updates",
+        "Settings Issues",
+        "Storage"
+    ],
+    "Account & Billing": [
+        "Bill Questions",
+        "Payment Issues",
+        "Plan Changes",
+        "Account Access"
+    ],
+    "Store & Service": [
+        "Store Visit",
+        "Device Repair",
+        "Order Pickup",
+        "Warranty"
+    ],
+    "General Inquiry": [
+        "Product Information",
+        "Service Questions",
+        "Other"
+    ]
+}
 
 
 def ensure_data_dir():
@@ -58,7 +112,7 @@ def init_db():
     with get_db() as conn:
         cursor = conn.cursor()
 
-        # Clusters table - categories for questions
+        # Clusters table - main categories
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS clusters (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,23 +120,40 @@ def init_db():
                 description TEXT,
                 icon TEXT,
                 color TEXT,
+                question_count INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
 
-        # Questions table - canonical questions with embeddings
+        # Subcategories table - nested under clusters
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS subcategories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cluster_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                description TEXT,
+                question_count INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (cluster_id) REFERENCES clusters(id),
+                UNIQUE(cluster_id, name)
+            )
+        """)
+
+        # Questions table - with subcategory reference
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS questions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 cluster_id INTEGER,
+                subcategory_id INTEGER,
                 canonical_text TEXT NOT NULL,
                 embedding BLOB,
                 status TEXT DEFAULT 'no_answer',
-                best_answer_id INTEGER,
+                best_script_id INTEGER,
                 times_asked INTEGER DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (cluster_id) REFERENCES clusters(id)
+                FOREIGN KEY (cluster_id) REFERENCES clusters(id),
+                FOREIGN KEY (subcategory_id) REFERENCES subcategories(id)
             )
         """)
 
@@ -99,24 +170,7 @@ def init_db():
             )
         """)
 
-        # Answers table - with effectiveness tracking (legacy, kept for compatibility)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS answers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                question_id INTEGER NOT NULL,
-                answer_text TEXT NOT NULL,
-                source_document_id INTEGER,
-                success_count INTEGER DEFAULT 0,
-                fail_count INTEGER DEFAULT 0,
-                effectiveness_percent REAL DEFAULT 0.0,
-                is_best BOOLEAN DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (question_id) REFERENCES questions(id),
-                FOREIGN KEY (source_document_id) REFERENCES documents(id)
-            )
-        """)
-
-        # Scripts table - ready-to-use operator response scripts (v3)
+        # Scripts table - ready-to-use operator response scripts
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS scripts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -124,7 +178,7 @@ def init_db():
                 script_text TEXT NOT NULL,
                 script_type TEXT DEFAULT 'instruction',
                 has_steps BOOLEAN DEFAULT 0,
-                success_count INTEGER DEFAULT 0,
+                success_count INTEGER DEFAULT 1,
                 fail_count INTEGER DEFAULT 0,
                 effectiveness REAL DEFAULT 50.0,
                 is_best BOOLEAN DEFAULT 0,
@@ -156,7 +210,7 @@ def init_db():
                 date TEXT UNIQUE NOT NULL,
                 total_calls INTEGER DEFAULT 0,
                 new_questions INTEGER DEFAULT 0,
-                new_answers INTEGER DEFAULT 0,
+                new_scripts INTEGER DEFAULT 0,
                 resolved_count INTEGER DEFAULT 0,
                 unresolved_count INTEGER DEFAULT 0
             )
@@ -164,10 +218,10 @@ def init_db():
 
         # Create indexes
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_questions_cluster ON questions(cluster_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_questions_subcategory ON questions(subcategory_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_questions_status ON questions(status)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_questions_times ON questions(times_asked DESC)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_answers_question ON answers(question_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_answers_effectiveness ON answers(effectiveness_percent DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_subcategories_cluster ON subcategories(cluster_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_variants_question ON question_variants(question_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_scripts_question ON scripts(question_id)")
@@ -176,13 +230,13 @@ def init_db():
 
         # Insert default clusters
         default_clusters = [
-            ("Messaging", "SMS, MMS, messages delayed, not sending", "💬", "#9b59b6"),
-            ("Calls & Voice", "Call quality, can't make calls, voicemail", "📞", "#3498db"),
-            ("Data & Internet", "Slow data, no internet, WiFi issues", "🌐", "#2ecc71"),
-            ("Device Issues", "Screen, battery, charging, buttons", "📱", "#e74c3c"),
-            ("Apps & Software", "App crashes, updates, settings", "💻", "#f39c12"),
+            ("Device Issues", "Hardware problems with phones and devices", "📱", "#e74c3c"),
+            ("Messaging", "SMS, MMS, and messaging app issues", "💬", "#9b59b6"),
+            ("Calls & Voice", "Call quality, voicemail, phone calls", "📞", "#3498db"),
+            ("Data & Internet", "Mobile data, WiFi, connectivity", "🌐", "#2ecc71"),
+            ("Apps & Software", "Applications, updates, settings", "💻", "#f39c12"),
             ("Account & Billing", "Payments, plans, account issues", "💳", "#1abc9c"),
-            ("Store & Service", "Pickup, repair, warranty", "🏪", "#e67e22"),
+            ("Store & Service", "Store visits, repairs, pickup", "🏪", "#e67e22"),
             ("General Inquiry", "Other questions", "❓", "#95a5a6"),
         ]
 
@@ -192,7 +246,19 @@ def init_db():
                 VALUES (?, ?, ?, ?)
             """, (name, desc, icon, color))
 
-        logger.info("Knowledge Hub database initialized")
+        # Insert subcategories
+        for cluster_name, subcats in SUBCATEGORIES.items():
+            cursor.execute("SELECT id FROM clusters WHERE name = ?", (cluster_name,))
+            row = cursor.fetchone()
+            if row:
+                cluster_id = row['id']
+                for subcat_name in subcats:
+                    cursor.execute("""
+                        INSERT OR IGNORE INTO subcategories (cluster_id, name)
+                        VALUES (?, ?)
+                    """, (cluster_id, subcat_name))
+
+        logger.info("Knowledge Hub database initialized with subcategories")
 
 
 # ==================== CLUSTER OPERATIONS ====================
@@ -237,16 +303,136 @@ def get_cluster_by_name(name):
         return cursor.fetchone()
 
 
+def get_cluster_with_subcategories(cluster_id):
+    """Get cluster with all its subcategories and top questions"""
+    cluster = get_cluster(cluster_id)
+    if not cluster:
+        return None
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+
+        # Get subcategories with question counts
+        cursor.execute("""
+            SELECT s.*,
+                   COUNT(q.id) as question_count
+            FROM subcategories s
+            LEFT JOIN questions q ON s.id = q.subcategory_id
+            WHERE s.cluster_id = ?
+            GROUP BY s.id
+            ORDER BY question_count DESC
+        """, (cluster_id,))
+        subcategories = cursor.fetchall()
+
+        # For each subcategory, get top 3 questions
+        result = dict(cluster)
+        result['subcategories'] = []
+
+        for sub in subcategories:
+            sub_dict = dict(sub)
+            cursor.execute("""
+                SELECT q.id, q.canonical_text, q.times_asked, q.status
+                FROM questions q
+                WHERE q.subcategory_id = ?
+                ORDER BY q.times_asked DESC
+                LIMIT 3
+            """, (sub['id'],))
+            sub_dict['top_questions'] = [dict(q) for q in cursor.fetchall()]
+            result['subcategories'].append(sub_dict)
+
+        return result
+
+
+# ==================== SUBCATEGORY OPERATIONS ====================
+
+def get_subcategory(subcategory_id):
+    """Get subcategory by ID"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT s.*, c.name as cluster_name, c.icon as cluster_icon, c.color as cluster_color
+            FROM subcategories s
+            JOIN clusters c ON s.cluster_id = c.id
+            WHERE s.id = ?
+        """, (subcategory_id,))
+        return cursor.fetchone()
+
+
+def get_subcategory_by_name(cluster_id, name):
+    """Get subcategory by cluster_id and name"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM subcategories
+            WHERE cluster_id = ? AND name = ?
+        """, (cluster_id, name))
+        return cursor.fetchone()
+
+
+def get_or_create_subcategory(cluster_id, name):
+    """Get existing subcategory or create new one"""
+    sub = get_subcategory_by_name(cluster_id, name)
+    if sub:
+        return sub['id']
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO subcategories (cluster_id, name)
+            VALUES (?, ?)
+        """, (cluster_id, name))
+        return cursor.lastrowid
+
+
+def get_subcategory_with_questions(subcategory_id, limit=50):
+    """Get subcategory with all its questions"""
+    sub = get_subcategory(subcategory_id)
+    if not sub:
+        return None
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT q.*,
+                   (SELECT COUNT(*) FROM scripts WHERE question_id = q.id) as script_count
+            FROM questions q
+            WHERE q.subcategory_id = ?
+            ORDER BY q.times_asked DESC
+            LIMIT ?
+        """, (subcategory_id, limit))
+        questions = cursor.fetchall()
+
+        result = dict(sub)
+        result['questions'] = [dict(q) for q in questions]
+        return result
+
+
+def get_subcategories_for_cluster(cluster_id):
+    """Get all subcategories for a cluster"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT s.*,
+                   COUNT(q.id) as question_count
+            FROM subcategories s
+            LEFT JOIN questions q ON s.id = q.subcategory_id
+            WHERE s.cluster_id = ?
+            GROUP BY s.id
+            ORDER BY question_count DESC
+        """, (cluster_id,))
+        return cursor.fetchall()
+
+
 # ==================== QUESTION OPERATIONS ====================
 
-def add_question(cluster_id, canonical_text, embedding=None):
+def add_question(cluster_id, canonical_text, embedding=None, subcategory_id=None):
     """Add a new question"""
     with get_db() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO questions (cluster_id, canonical_text, embedding, status)
-            VALUES (?, ?, ?, 'no_answer')
-        """, (cluster_id, canonical_text, serialize_embedding(embedding)))
+            INSERT INTO questions (cluster_id, subcategory_id, canonical_text, embedding, status)
+            VALUES (?, ?, ?, ?, 'no_answer')
+        """, (cluster_id, subcategory_id, canonical_text, serialize_embedding(embedding)))
         return cursor.lastrowid
 
 
@@ -257,26 +443,51 @@ def get_question(question_id):
         cursor.execute("""
             SELECT q.*,
                    c.name as cluster_name, c.icon as cluster_icon, c.color as cluster_color,
+                   s.name as subcategory_name,
                    (SELECT COUNT(*) FROM question_variants WHERE question_id = q.id) as variant_count,
-                   (SELECT COUNT(*) FROM answers WHERE question_id = q.id) as answer_count
+                   (SELECT COUNT(*) FROM scripts WHERE question_id = q.id) as script_count
             FROM questions q
             LEFT JOIN clusters c ON q.cluster_id = c.id
+            LEFT JOIN subcategories s ON q.subcategory_id = s.id
             WHERE q.id = ?
         """, (question_id,))
         return cursor.fetchone()
 
 
-def get_questions(cluster_id=None, status=None, limit=100, offset=0, sort_by='times_asked'):
+def get_question_detail(question_id):
+    """Get question with variants and all scripts"""
+    question = get_question(question_id)
+    if not question:
+        return None
+
+    result = dict(question)
+    result['variants'] = [dict(v) for v in get_question_variants(question_id)]
+
+    scripts = get_scripts(question_id)
+    result['best_script'] = None
+    result['other_scripts'] = []
+
+    for s in scripts:
+        if s['is_best']:
+            result['best_script'] = dict(s)
+        else:
+            result['other_scripts'].append(dict(s))
+
+    return result
+
+
+def get_questions(cluster_id=None, subcategory_id=None, status=None, limit=100, offset=0, sort_by='times_asked'):
     """Get questions with optional filters"""
     with get_db() as conn:
         cursor = conn.cursor()
         query = """
             SELECT q.*,
                    c.name as cluster_name, c.icon as cluster_icon, c.color as cluster_color,
-                   (SELECT COUNT(*) FROM question_variants WHERE question_id = q.id) as variant_count,
-                   (SELECT COUNT(*) FROM answers WHERE question_id = q.id) as answer_count
+                   s.name as subcategory_name,
+                   (SELECT COUNT(*) FROM scripts WHERE question_id = q.id) as script_count
             FROM questions q
             LEFT JOIN clusters c ON q.cluster_id = c.id
+            LEFT JOIN subcategories s ON q.subcategory_id = s.id
             WHERE 1=1
         """
         params = []
@@ -284,6 +495,10 @@ def get_questions(cluster_id=None, status=None, limit=100, offset=0, sort_by='ti
         if cluster_id:
             query += " AND q.cluster_id = ?"
             params.append(cluster_id)
+
+        if subcategory_id:
+            query += " AND q.subcategory_id = ?"
+            params.append(subcategory_id)
 
         if status:
             query += " AND q.status = ?"
@@ -303,7 +518,7 @@ def get_questions(cluster_id=None, status=None, limit=100, offset=0, sort_by='ti
         return cursor.fetchall()
 
 
-def get_questions_count(cluster_id=None, status=None):
+def get_questions_count(cluster_id=None, subcategory_id=None, status=None):
     """Get count of questions"""
     with get_db() as conn:
         cursor = conn.cursor()
@@ -313,6 +528,9 @@ def get_questions_count(cluster_id=None, status=None):
         if cluster_id:
             query += " AND cluster_id = ?"
             params.append(cluster_id)
+        if subcategory_id:
+            query += " AND subcategory_id = ?"
+            params.append(subcategory_id)
         if status:
             query += " AND status = ?"
             params.append(status)
@@ -325,14 +543,18 @@ def get_all_questions_with_embeddings():
     """Get all questions with embeddings for similarity search"""
     with get_db() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT id, canonical_text, embedding, cluster_id FROM questions WHERE embedding IS NOT NULL")
+        cursor.execute("""
+            SELECT id, canonical_text, embedding, cluster_id, subcategory_id
+            FROM questions WHERE embedding IS NOT NULL
+        """)
         results = []
         for row in cursor.fetchall():
             results.append({
                 'id': row['id'],
                 'canonical_text': row['canonical_text'],
                 'embedding': deserialize_embedding(row['embedding']),
-                'cluster_id': row['cluster_id']
+                'cluster_id': row['cluster_id'],
+                'subcategory_id': row['subcategory_id']
             })
         return results
 
@@ -365,22 +587,35 @@ def update_question_status(question_id, status):
         """, (status, question_id))
 
 
-def update_question_best_answer(question_id, answer_id):
-    """Set the best answer for a question"""
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute("UPDATE questions SET best_answer_id = ? WHERE id = ?",
-                      (answer_id, question_id))
-
-
 def get_needs_work_questions(limit=100):
     """Get questions that need work"""
     return get_questions(status='needs_work', limit=limit, sort_by='times_asked')
 
 
 def get_top_questions(limit=10):
-    """Get most frequently asked questions"""
-    return get_questions(limit=limit, sort_by='times_asked')
+    """Get most frequently asked questions with best scripts"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT q.*,
+                   c.name as cluster_name, c.icon as cluster_icon, c.color as cluster_color,
+                   s.name as subcategory_name
+            FROM questions q
+            LEFT JOIN clusters c ON q.cluster_id = c.id
+            LEFT JOIN subcategories s ON q.subcategory_id = s.id
+            ORDER BY q.times_asked DESC
+            LIMIT ?
+        """, (limit,))
+        questions = cursor.fetchall()
+
+        results = []
+        for q in questions:
+            q_dict = dict(q)
+            best = get_best_script(q['id'])
+            q_dict['best_script'] = dict(best) if best else None
+            results.append(q_dict)
+
+        return results
 
 
 # ==================== QUESTION VARIANTS ====================
@@ -410,146 +645,7 @@ def get_question_variants(question_id):
         return cursor.fetchall()
 
 
-# ==================== ANSWER OPERATIONS ====================
-
-def add_answer(question_id, answer_text, source_document_id=None, resolution_status='unknown', customer_satisfaction='neutral'):
-    """Add answer and update effectiveness"""
-    # Determine success/fail based on resolution and satisfaction
-    resolved = resolution_status == 'resolved'
-    satisfied = customer_satisfaction in ('positive', 'neutral')
-    success = 1 if resolved else 0
-    fail = 1 if not resolved else 0
-
-    with get_db() as conn:
-        cursor = conn.cursor()
-
-        # Check if similar answer exists
-        cursor.execute("""
-            SELECT id, success_count, fail_count FROM answers
-            WHERE question_id = ? AND answer_text = ?
-        """, (question_id, answer_text))
-        existing = cursor.fetchone()
-
-        if existing:
-            # Update existing answer
-            cursor.execute("""
-                UPDATE answers
-                SET success_count = success_count + ?,
-                    fail_count = fail_count + ?
-                WHERE id = ?
-            """, (success, fail, existing['id']))
-            answer_id = existing['id']
-        else:
-            # Create new answer
-            cursor.execute("""
-                INSERT INTO answers (question_id, answer_text, source_document_id, success_count, fail_count)
-                VALUES (?, ?, ?, ?, ?)
-            """, (question_id, answer_text, source_document_id, success, fail))
-            answer_id = cursor.lastrowid
-
-        # Update effectiveness
-        _update_answer_effectiveness(cursor, answer_id)
-
-        # Update best answer for question
-        _update_best_answer(cursor, question_id)
-
-        return answer_id
-
-
-def _update_answer_effectiveness(cursor, answer_id):
-    """Calculate effectiveness percentage"""
-    cursor.execute("SELECT success_count, fail_count FROM answers WHERE id = ?", (answer_id,))
-    row = cursor.fetchone()
-    if row:
-        total = row['success_count'] + row['fail_count']
-        if total > 0:
-            effectiveness = (row['success_count'] / total) * 100
-        else:
-            effectiveness = 50.0
-        cursor.execute("UPDATE answers SET effectiveness_percent = ? WHERE id = ?",
-                      (effectiveness, answer_id))
-
-
-def _update_best_answer(cursor, question_id):
-    """Update best answer and question status"""
-    # Reset all is_best
-    cursor.execute("UPDATE answers SET is_best = 0 WHERE question_id = ?", (question_id,))
-
-    # Find best answer
-    cursor.execute("""
-        SELECT id, effectiveness_percent FROM answers
-        WHERE question_id = ?
-        ORDER BY effectiveness_percent DESC, success_count DESC
-        LIMIT 1
-    """, (question_id,))
-    best = cursor.fetchone()
-
-    if best:
-        cursor.execute("UPDATE answers SET is_best = 1 WHERE id = ?", (best['id'],))
-        cursor.execute("UPDATE questions SET best_answer_id = ? WHERE id = ?",
-                      (best['id'], question_id))
-
-        # Update question status based on effectiveness
-        if best['effectiveness_percent'] >= 70:
-            status = 'resolved'
-        elif best['effectiveness_percent'] > 0:
-            status = 'needs_work'
-        else:
-            status = 'no_answer'
-
-        cursor.execute("UPDATE questions SET status = ? WHERE id = ?", (status, question_id))
-    else:
-        cursor.execute("UPDATE questions SET status = 'no_answer', best_answer_id = NULL WHERE id = ?",
-                      (question_id,))
-
-
-def get_answers(question_id):
-    """Get all answers for a question"""
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT a.*, d.filename as source_filename
-            FROM answers a
-            LEFT JOIN documents d ON a.source_document_id = d.id
-            WHERE a.question_id = ?
-            ORDER BY a.is_best DESC, a.effectiveness_percent DESC
-        """, (question_id,))
-        return cursor.fetchall()
-
-
-def get_best_answer(question_id):
-    """Get the best answer for a question"""
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT a.*, d.filename as source_filename
-            FROM answers a
-            LEFT JOIN documents d ON a.source_document_id = d.id
-            WHERE a.question_id = ? AND a.is_best = 1
-        """, (question_id,))
-        return cursor.fetchone()
-
-
-def update_answer_feedback(answer_id, helpful):
-    """Update answer based on user feedback"""
-    with get_db() as conn:
-        cursor = conn.cursor()
-
-        if helpful:
-            cursor.execute("UPDATE answers SET success_count = success_count + 1 WHERE id = ?", (answer_id,))
-        else:
-            cursor.execute("UPDATE answers SET fail_count = fail_count + 1 WHERE id = ?", (answer_id,))
-
-        _update_answer_effectiveness(cursor, answer_id)
-
-        # Get question_id and update best answer
-        cursor.execute("SELECT question_id FROM answers WHERE id = ?", (answer_id,))
-        row = cursor.fetchone()
-        if row:
-            _update_best_answer(cursor, row['question_id'])
-
-
-# ==================== SCRIPT OPERATIONS (v3) ====================
+# ==================== SCRIPT OPERATIONS ====================
 
 def add_script(question_id, script_text, script_type='instruction', has_steps=False, resolved=True, source_doc_id=None):
     """Add a new script for a question"""
@@ -628,34 +724,36 @@ def find_similar_script(question_id, script_text, similarity_threshold=0.9):
             WHERE question_id = ?
         """, (question_id,))
 
-        # Simple text similarity - check if normalized texts match
         normalized_new = script_text.lower().strip()
         for row in cursor.fetchall():
             normalized_existing = row['script_text'].lower().strip()
-            # Check exact match or high similarity
             if normalized_new == normalized_existing:
                 return row['id']
-            # Check if one contains the other (for very similar scripts)
             if len(normalized_new) > 50 and len(normalized_existing) > 50:
                 shorter = min(normalized_new, normalized_existing, key=len)
                 longer = max(normalized_new, normalized_existing, key=len)
-                if shorter in longer or (len(set(shorter.split()) & set(longer.split())) / len(set(shorter.split())) > similarity_threshold):
+                if shorter in longer:
                     return row['id']
+                words_new = set(normalized_new.split())
+                words_existing = set(normalized_existing.split())
+                if len(words_new) > 0:
+                    overlap = len(words_new & words_existing) / len(words_new)
+                    if overlap > similarity_threshold:
+                        return row['id']
         return None
 
 
-def update_script_count(script_id, resolved):
+def update_script_count(script_id, success=True):
     """Update script success/fail count"""
     with get_db() as conn:
         cursor = conn.cursor()
-        if resolved:
+        if success:
             cursor.execute("UPDATE scripts SET success_count = success_count + 1 WHERE id = ?", (script_id,))
         else:
             cursor.execute("UPDATE scripts SET fail_count = fail_count + 1 WHERE id = ?", (script_id,))
 
         _update_script_effectiveness(cursor, script_id)
 
-        # Get question_id and update best
         cursor.execute("SELECT question_id FROM scripts WHERE id = ?", (script_id,))
         row = cursor.fetchone()
         if row:
@@ -674,7 +772,6 @@ def update_script_feedback(script_id, helpful):
 
         _update_script_effectiveness(cursor, script_id)
 
-        # Get question_id and update best script
         cursor.execute("SELECT question_id FROM scripts WHERE id = ?", (script_id,))
         row = cursor.fetchone()
         if row:
@@ -692,7 +789,6 @@ def _update_script_effectiveness(cursor, script_id):
         else:
             base = 50.0
 
-        # Bonuses
         if row['has_steps']:
             base += 10
         if row['script_type'] == 'instruction':
@@ -704,10 +800,8 @@ def _update_script_effectiveness(cursor, script_id):
 
 def _update_best_script(cursor, question_id):
     """Update best script and question status"""
-    # Reset all is_best for this question
     cursor.execute("UPDATE scripts SET is_best = 0 WHERE question_id = ?", (question_id,))
 
-    # Find best script
     cursor.execute("""
         SELECT id, effectiveness FROM scripts
         WHERE question_id = ?
@@ -719,7 +813,6 @@ def _update_best_script(cursor, question_id):
     if best:
         cursor.execute("UPDATE scripts SET is_best = 1 WHERE id = ?", (best['id'],))
 
-        # Update question status based on effectiveness
         if best['effectiveness'] >= 70:
             status = 'resolved'
         elif best['effectiveness'] > 0:
@@ -727,15 +820,15 @@ def _update_best_script(cursor, question_id):
         else:
             status = 'no_answer'
 
-        cursor.execute("UPDATE questions SET status = ?, best_answer_id = ? WHERE id = ?",
+        cursor.execute("UPDATE questions SET status = ?, best_script_id = ? WHERE id = ?",
                       (status, best['id'], question_id))
     else:
-        cursor.execute("UPDATE questions SET status = 'no_answer', best_answer_id = NULL WHERE id = ?",
+        cursor.execute("UPDATE questions SET status = 'no_answer', best_script_id = NULL WHERE id = ?",
                       (question_id,))
 
 
 def recalculate_best_script(question_id):
-    """Recalculate best script for a question (public function)"""
+    """Recalculate best script for a question"""
     with get_db() as conn:
         cursor = conn.cursor()
         _update_best_script(cursor, question_id)
@@ -835,6 +928,44 @@ def get_documents_count(status=None):
         return cursor.fetchone()[0]
 
 
+# ==================== SEARCH & AUTOCOMPLETE ====================
+
+def search_questions_text(query, limit=20):
+    """Text search in questions"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT q.*, c.name as cluster_name, c.icon as cluster_icon, c.color as cluster_color,
+                   s.name as subcategory_name
+            FROM questions q
+            LEFT JOIN clusters c ON q.cluster_id = c.id
+            LEFT JOIN subcategories s ON q.subcategory_id = s.id
+            WHERE q.canonical_text LIKE ?
+            ORDER BY q.times_asked DESC
+            LIMIT ?
+        """, (f'%{query}%', limit))
+        return cursor.fetchall()
+
+
+def get_autocomplete_suggestions(text, limit=5):
+    """Get autocomplete suggestions for search"""
+    if not text or len(text) < 2:
+        return []
+
+    with get_db() as conn:
+        cursor = conn.cursor()
+        # Search in canonical text and variants
+        cursor.execute("""
+            SELECT DISTINCT canonical_text as suggestion
+            FROM questions
+            WHERE canonical_text LIKE ?
+            ORDER BY times_asked DESC
+            LIMIT ?
+        """, (f'%{text}%', limit))
+        results = [row['suggestion'] for row in cursor.fetchall()]
+        return results
+
+
 # ==================== STATISTICS ====================
 
 def get_stats():
@@ -847,11 +978,11 @@ def get_stats():
         cursor.execute("SELECT COUNT(*) FROM clusters")
         stats['total_clusters'] = cursor.fetchone()[0]
 
+        cursor.execute("SELECT COUNT(*) FROM subcategories")
+        stats['total_subcategories'] = cursor.fetchone()[0]
+
         cursor.execute("SELECT COUNT(*) FROM questions")
         stats['total_questions'] = cursor.fetchone()[0]
-
-        cursor.execute("SELECT COUNT(*) FROM answers")
-        stats['total_answers'] = cursor.fetchone()[0]
 
         cursor.execute("SELECT COUNT(*) FROM scripts")
         stats['total_scripts'] = cursor.fetchone()[0]
@@ -874,63 +1005,11 @@ def get_stats():
         cursor.execute("SELECT COUNT(*) FROM documents WHERE status = 'pending'")
         stats['pending_documents'] = cursor.fetchone()[0]
 
-        cursor.execute("SELECT COUNT(*) FROM question_variants")
-        stats['total_variants'] = cursor.fetchone()[0]
-
-        # Scripts stats
         cursor.execute("SELECT AVG(effectiveness) FROM scripts WHERE is_best = 1")
         avg_eff = cursor.fetchone()[0]
         stats['avg_script_effectiveness'] = round(avg_eff, 1) if avg_eff else 0
 
         return stats
-
-
-# ==================== SEARCH ====================
-
-def search_questions_text(query, limit=20):
-    """Text search in questions"""
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT q.*, c.name as cluster_name, c.icon as cluster_icon
-            FROM questions q
-            LEFT JOIN clusters c ON q.cluster_id = c.id
-            WHERE q.canonical_text LIKE ?
-            ORDER BY q.times_asked DESC
-            LIMIT ?
-        """, (f'%{query}%', limit))
-        return cursor.fetchall()
-
-
-# ==================== DAILY SUMMARY ====================
-
-def update_daily_summary(calls=0, questions=0, answers=0, resolved=0, unresolved=0):
-    """Update daily summary counters"""
-    today = date.today().isoformat()
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO daily_summary (date, total_calls, new_questions, new_answers, resolved_count, unresolved_count)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(date) DO UPDATE SET
-                total_calls = total_calls + excluded.total_calls,
-                new_questions = new_questions + excluded.new_questions,
-                new_answers = new_answers + excluded.new_answers,
-                resolved_count = resolved_count + excluded.resolved_count,
-                unresolved_count = unresolved_count + excluded.unresolved_count
-        """, (today, calls, questions, answers, resolved, unresolved))
-
-
-def get_summary(days=30):
-    """Get daily summary for last N days"""
-    with get_db() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT * FROM daily_summary
-            ORDER BY date DESC
-            LIMIT ?
-        """, (days,))
-        return cursor.fetchall()
 
 
 def get_questions_by_cluster():
@@ -944,6 +1023,37 @@ def get_questions_by_cluster():
             GROUP BY c.id
             ORDER BY count DESC
         """)
+        return cursor.fetchall()
+
+
+# ==================== DAILY SUMMARY ====================
+
+def update_daily_summary(calls=0, questions=0, scripts=0, resolved=0, unresolved=0):
+    """Update daily summary counters"""
+    today = date.today().isoformat()
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO daily_summary (date, total_calls, new_questions, new_scripts, resolved_count, unresolved_count)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(date) DO UPDATE SET
+                total_calls = total_calls + excluded.total_calls,
+                new_questions = new_questions + excluded.new_questions,
+                new_scripts = new_scripts + excluded.new_scripts,
+                resolved_count = resolved_count + excluded.resolved_count,
+                unresolved_count = unresolved_count + excluded.unresolved_count
+        """, (today, calls, questions, scripts, resolved, unresolved))
+
+
+def get_summary(days=30):
+    """Get daily summary for last N days"""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT * FROM daily_summary
+            ORDER BY date DESC
+            LIMIT ?
+        """, (days,))
         return cursor.fetchall()
 
 

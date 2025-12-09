@@ -1,167 +1,220 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - Response Scripts Library{% endblock %}
+{% block title %}Response Scripts Library{% endblock %}
 
 {% block content %}
-<div class="page-header">
+<!-- Search Hero Section -->
+<div class="search-hero">
     <h1>Response Scripts Library</h1>
-    <div class="header-actions">
-        <a href="{{ url_for('search') }}" class="btn btn-primary">Search Scripts</a>
-        <button class="btn" onclick="scanAndProcess()">Scan & Process</button>
+    <p class="hero-subtitle">Find ready-to-use response scripts for customer questions</p>
+
+    <form action="{{ url_for('search') }}" method="GET" class="hero-search-form">
+        <div class="search-input-wrapper">
+            <input type="text" name="q" placeholder="Describe the customer problem (3-5 words)..."
+                   class="hero-search-input" id="searchInput" autocomplete="off">
+            <input type="hidden" name="type" value="semantic">
+            <button type="submit" class="hero-search-btn">Find Scripts</button>
+            <div class="autocomplete-dropdown" id="autocompleteDropdown"></div>
+        </div>
+    </form>
+
+    <div class="search-examples">
+        <span>Examples:</span>
+        <a href="{{ url_for('search', q='phone not charging', type='semantic') }}">phone not charging</a>
+        <a href="{{ url_for('search', q='messages not sending', type='semantic') }}">messages not sending</a>
+        <a href="{{ url_for('search', q='slow internet', type='semantic') }}">slow internet</a>
     </div>
 </div>
 
-<!-- Overview Stats -->
-<div class="stats-grid">
-    <div class="stat-card">
-        <div class="stat-value">{{ stats.total_questions }}</div>
-        <div class="stat-label">Questions</div>
+<!-- Quick Stats -->
+<div class="stats-bar">
+    <div class="stat-item">
+        <span class="stat-number">{{ stats.total_questions }}</span>
+        <span class="stat-text">Questions</span>
     </div>
-    <div class="stat-card stat-scripts">
-        <div class="stat-value">{{ stats.total_scripts }}</div>
-        <div class="stat-label">Scripts</div>
+    <div class="stat-item">
+        <span class="stat-number">{{ stats.total_scripts }}</span>
+        <span class="stat-text">Scripts</span>
     </div>
-    <div class="stat-card stat-processed">
-        <div class="stat-value">{{ stats.resolved_count }}</div>
-        <div class="stat-label">Resolved</div>
+    <div class="stat-item">
+        <span class="stat-number">{{ stats.resolved_count }}</span>
+        <span class="stat-text">Resolved</span>
     </div>
-    <div class="stat-card stat-warning">
-        <div class="stat-value">{{ stats.needs_work_count }}</div>
-        <div class="stat-label">Needs Work</div>
-    </div>
-    <div class="stat-card">
-        <div class="stat-value">{{ stats.avg_script_effectiveness }}%</div>
-        <div class="stat-label">Avg Effectiveness</div>
-    </div>
-    <div class="stat-card stat-pending">
-        <div class="stat-value">{{ stats.pending_documents }}</div>
-        <div class="stat-label">Pending</div>
+    <div class="stat-item">
+        <span class="stat-number">{{ stats.avg_script_effectiveness }}%</span>
+        <span class="stat-text">Avg Effectiveness</span>
     </div>
 </div>
 
-<!-- Clusters Overview -->
-<div class="card">
-    <div class="card-header">
-        <h2>Clusters</h2>
-        <a href="{{ url_for('clusters') }}" class="btn btn-sm">View All</a>
+<!-- Browse by Cluster -->
+<div class="section">
+    <div class="section-header">
+        <h2>Browse by Category</h2>
+        <a href="{{ url_for('clusters') }}" class="link-all">View All</a>
     </div>
-    <div class="card-body">
-        <div class="clusters-grid">
-            {% for cluster in clusters %}
-            <a href="{{ url_for('cluster_detail', cluster_id=cluster.id) }}" class="cluster-card" style="border-left-color: {{ cluster.color }}">
-                <div class="cluster-icon">{{ cluster.icon }}</div>
-                <div class="cluster-info">
-                    <div class="cluster-name">{{ cluster.name }}</div>
-                    <div class="cluster-stats">
-                        <span>{{ cluster.question_count }} questions</span>
-                        <span class="resolved">{{ cluster.resolved_count }} resolved</span>
-                    </div>
+
+    <div class="clusters-grid">
+        {% for cluster in clusters %}
+        <a href="{{ url_for('cluster_detail', cluster_id=cluster.id) }}" class="cluster-card">
+            <div class="cluster-icon" style="background-color: {{ cluster.color }}20; color: {{ cluster.color }}">
+                {{ cluster.icon }}
+            </div>
+            <div class="cluster-info">
+                <div class="cluster-name">{{ cluster.name }}</div>
+                <div class="cluster-stats">
+                    <span>{{ cluster.question_count }} questions</span>
+                    {% if cluster.resolved_count %}
+                    <span class="resolved">{{ cluster.resolved_count }} resolved</span>
+                    {% endif %}
                 </div>
-            </a>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Two Column Layout -->
+<div class="two-columns">
+    <!-- Top Questions -->
+    <div class="section">
+        <div class="section-header">
+            <h2>Frequently Asked</h2>
+        </div>
+
+        {% if top_questions %}
+        <div class="question-list">
+            {% for q in top_questions %}
+            <div class="question-item">
+                <a href="{{ url_for('question_detail', question_id=q.id) }}" class="question-link">
+                    <span class="question-badge" style="background-color: {{ q.cluster_color }}">{{ q.cluster_icon }}</span>
+                    <span class="question-text">{{ q.canonical_text|truncate_text(50) }}</span>
+                </a>
+                <div class="question-meta">
+                    <span class="times-asked">{{ q.times_asked }}x</span>
+                    <span class="status-badge status-{{ q.status }}">{{ q.status }}</span>
+                </div>
+                {% if q.best_script %}
+                <div class="quick-copy">
+                    <button onclick="copyScript({{ q.best_script.id }})" class="btn-copy-inline">Copy Best Script</button>
+                </div>
+                {% endif %}
+            </div>
             {% endfor %}
         </div>
-    </div>
-</div>
-
-<div class="grid-2">
-    <!-- Top Questions with Scripts -->
-    <div class="card">
-        <div class="card-header">
-            <h2>Top Questions</h2>
-        </div>
-        <div class="card-body">
-            {% if top_questions %}
-            <ul class="question-list">
-                {% for q in top_questions %}
-                <li>
-                    <a href="{{ url_for('question_detail', question_id=q.id) }}">
-                        <span class="cluster-badge" style="background-color: {{ q.cluster_color }}">{{ q.cluster_icon }}</span>
-                        <span class="question-text">{{ q.canonical_text|truncate_text(60) }}</span>
-                        <span class="question-stats">
-                            <span class="times-asked">{{ q.times_asked }}x</span>
-                            <span class="status-badge status-{{ q.status }}">{{ q.status }}</span>
-                        </span>
-                    </a>
-                </li>
-                {% endfor %}
-            </ul>
-            {% else %}
-            <p class="empty-state">No questions yet</p>
-            {% endif %}
-        </div>
+        {% else %}
+        <p class="empty-state">No questions yet. Upload some transcriptions to get started.</p>
+        {% endif %}
     </div>
 
     <!-- Needs Work -->
-    <div class="card">
-        <div class="card-header">
-            <h2>Needs Work</h2>
-            <a href="{{ url_for('needs_work') }}" class="btn btn-sm">View All</a>
+    <div class="section">
+        <div class="section-header">
+            <h2>Needs Better Scripts</h2>
+            <a href="{{ url_for('needs_work') }}" class="link-all">View All</a>
         </div>
-        <div class="card-body">
-            {% if needs_work %}
-            <ul class="question-list">
-                {% for q in needs_work %}
-                <li>
-                    <a href="{{ url_for('question_detail', question_id=q.id) }}">
-                        <span class="cluster-badge" style="background-color: {{ q.cluster_color }}">{{ q.cluster_icon }}</span>
-                        <span class="question-text">{{ q.canonical_text|truncate_text(60) }}</span>
-                        <span class="question-stats">
-                            <span class="times-asked">{{ q.times_asked }}x</span>
-                        </span>
-                    </a>
-                </li>
-                {% endfor %}
-            </ul>
-            {% else %}
-            <p class="empty-state">All questions have good scripts!</p>
-            {% endif %}
-        </div>
-    </div>
-</div>
 
-<!-- Recent Documents -->
-<div class="card">
-    <div class="card-header">
-        <h2>Recent Documents</h2>
-        <a href="{{ url_for('documents') }}" class="btn btn-sm">View All</a>
-    </div>
-    <div class="card-body">
-        {% if recent_docs %}
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>Filename</th>
-                    <th>Status</th>
-                    <th>Processed</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for doc in recent_docs %}
-                <tr>
-                    <td><a href="{{ url_for('document_detail', doc_id=doc.id) }}">{{ doc.filename }}</a></td>
-                    <td><span class="badge badge-{{ doc.status }}">{{ doc.status }}</span></td>
-                    <td>{{ doc.processed_at|datetime }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        {% if needs_work %}
+        <div class="question-list">
+            {% for q in needs_work %}
+            <div class="question-item needs-work">
+                <a href="{{ url_for('question_detail', question_id=q.id) }}" class="question-link">
+                    <span class="question-badge" style="background-color: {{ q.cluster_color }}">{{ q.cluster_icon }}</span>
+                    <span class="question-text">{{ q.canonical_text|truncate_text(50) }}</span>
+                </a>
+                <div class="question-meta">
+                    <span class="times-asked">{{ q.times_asked }}x asked</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
         {% else %}
-        <p class="empty-state">No documents yet</p>
+        <p class="empty-state success">All questions have good scripts!</p>
         {% endif %}
     </div>
 </div>
-{% endblock %}
 
-{% block head %}
-<style>
-.stat-card.stat-scripts .stat-value {
-    color: #007bff;
-}
-</style>
+<!-- Admin Actions -->
+<div class="admin-section">
+    <button class="btn btn-outline" onclick="scanAndProcess()">Scan & Process New Files</button>
+    <span class="pending-badge">{{ stats.pending_documents }} pending</span>
+</div>
+
+<!-- Toast notification -->
+<div id="toast" class="toast"></div>
 {% endblock %}
 
 {% block scripts %}
 <script>
+// Autocomplete functionality
+const searchInput = document.getElementById('searchInput');
+const dropdown = document.getElementById('autocompleteDropdown');
+let debounceTimer;
+
+searchInput.addEventListener('input', function() {
+    clearTimeout(debounceTimer);
+    const query = this.value.trim();
+
+    if (query.length < 2) {
+        dropdown.style.display = 'none';
+        return;
+    }
+
+    debounceTimer = setTimeout(() => {
+        fetch('/api/autocomplete?q=' + encodeURIComponent(query))
+            .then(r => r.json())
+            .then(suggestions => {
+                if (suggestions.length === 0) {
+                    dropdown.style.display = 'none';
+                    return;
+                }
+
+                dropdown.innerHTML = suggestions.map(s =>
+                    `<div class="autocomplete-item" onclick="selectSuggestion('${s.replace(/'/g, "\\'")}')">${s}</div>`
+                ).join('');
+                dropdown.style.display = 'block';
+            });
+    }, 200);
+});
+
+searchInput.addEventListener('blur', () => {
+    setTimeout(() => dropdown.style.display = 'none', 200);
+});
+
+function selectSuggestion(text) {
+    searchInput.value = text;
+    dropdown.style.display = 'none';
+    searchInput.closest('form').submit();
+}
+
+// Copy script functionality
+function copyScript(id) {
+    fetch('/api/script/' + id + '/copy')
+        .then(r => r.json())
+        .then(data => {
+            if (data.text) {
+                navigator.clipboard.writeText(data.text).then(() => {
+                    showToast('Copied to clipboard!');
+                }).catch(() => {
+                    // Fallback
+                    const textarea = document.createElement('textarea');
+                    textarea.value = data.text;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    showToast('Copied to clipboard!');
+                });
+            }
+        });
+}
+
+function showToast(message) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2000);
+}
+
 function scanAndProcess() {
     const btn = event.target;
     btn.disabled = true;
@@ -171,16 +224,16 @@ function scanAndProcess() {
         .then(response => response.json())
         .then(data => {
             if (data.error) {
-                alert(data.error);
+                showToast(data.error);
             } else {
-                alert(`Processed: ${data.processed}, Errors: ${data.errors}, New files: ${data.new_files}`);
-                location.reload();
+                showToast(`Processed: ${data.processed}, New files: ${data.new_files}`);
+                setTimeout(() => location.reload(), 1500);
             }
         })
-        .catch(err => alert('Error: ' + err))
+        .catch(err => showToast('Error: ' + err))
         .finally(() => {
             btn.disabled = false;
-            btn.textContent = 'Scan & Process';
+            btn.textContent = 'Scan & Process New Files';
         });
 }
 </script>

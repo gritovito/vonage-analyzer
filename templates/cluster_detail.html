@@ -1,194 +1,68 @@
 {% extends "base.html" %}
 
-{% block title %}{{ cluster.name }} - Knowledge Hub{% endblock %}
+{% block title %}{{ cluster.name }} - Response Scripts Library{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <div>
-        <a href="{{ url_for('clusters') }}" class="btn btn-sm">&laquo; Back to Clusters</a>
-        <h1 style="margin-top: 1rem;">
-            <span class="cluster-icon" style="background-color: {{ cluster.color }}20">{{ cluster.icon }}</span>
-            {{ cluster.name }}
-        </h1>
+<!-- Breadcrumb -->
+<nav class="breadcrumb">
+    <a href="{{ url_for('index') }}">Home</a>
+    <span class="separator">/</span>
+    <a href="{{ url_for('clusters') }}">Categories</a>
+    <span class="separator">/</span>
+    <span class="current">{{ cluster.name }}</span>
+</nav>
+
+<!-- Cluster Header -->
+<div class="cluster-header" style="border-left-color: {{ cluster.color }}">
+    <div class="cluster-icon-large" style="background-color: {{ cluster.color }}20; color: {{ cluster.color }}">
+        {{ cluster.icon }}
+    </div>
+    <div class="cluster-header-info">
+        <h1>{{ cluster.name }}</h1>
         <p class="cluster-description">{{ cluster.description }}</p>
+        <div class="cluster-header-stats">
+            <span class="stat"><strong>{{ cluster.question_count }}</strong> questions</span>
+            <span class="stat"><strong>{{ cluster.resolved_count or 0 }}</strong> resolved</span>
+        </div>
     </div>
 </div>
 
-<!-- Stats -->
-<div class="stats-grid">
-    <div class="stat-card">
-        <div class="stat-value">{{ cluster.question_count }}</div>
-        <div class="stat-label">Questions</div>
-    </div>
-    <div class="stat-card stat-processed">
-        <div class="stat-value">{{ cluster.resolved_count }}</div>
-        <div class="stat-label">Resolved</div>
-    </div>
-</div>
+<!-- Subcategories -->
+<div class="section">
+    <h2>Subcategories</h2>
 
-<!-- Filters -->
-<div class="filter-bar">
-    <div class="filter-group">
-        <label>Status:</label>
-        <a href="{{ url_for('cluster_detail', cluster_id=cluster.id, sort=sort) }}" class="filter-btn {% if not current_status %}active{% endif %}">All</a>
-        <a href="{{ url_for('cluster_detail', cluster_id=cluster.id, status='resolved', sort=sort) }}" class="filter-btn {% if current_status == 'resolved' %}active{% endif %}">Resolved</a>
-        <a href="{{ url_for('cluster_detail', cluster_id=cluster.id, status='needs_work', sort=sort) }}" class="filter-btn {% if current_status == 'needs_work' %}active{% endif %}">Needs Work</a>
-        <a href="{{ url_for('cluster_detail', cluster_id=cluster.id, status='no_answer', sort=sort) }}" class="filter-btn {% if current_status == 'no_answer' %}active{% endif %}">No Answer</a>
-    </div>
-    <div class="filter-group">
-        <label>Sort by:</label>
-        <a href="{{ url_for('cluster_detail', cluster_id=cluster.id, status=current_status, sort='times_asked') }}" class="filter-btn {% if sort == 'times_asked' %}active{% endif %}">Most Asked</a>
-        <a href="{{ url_for('cluster_detail', cluster_id=cluster.id, status=current_status, sort='recent') }}" class="filter-btn {% if sort == 'recent' %}active{% endif %}">Recent</a>
-    </div>
-</div>
+    {% if cluster.subcategories %}
+    <div class="subcategories-grid">
+        {% for sub in cluster.subcategories %}
+        <div class="subcategory-card">
+            <div class="subcategory-header">
+                <a href="{{ url_for('subcategory_detail', subcategory_id=sub.id) }}" class="subcategory-name">
+                    {{ sub.name }}
+                </a>
+                <span class="subcategory-count">{{ sub.question_count }} questions</span>
+            </div>
 
-<!-- Questions List -->
-<div class="card">
-    <div class="card-header">
-        <h2>Questions ({{ total }})</h2>
-    </div>
-    <div class="card-body">
-        {% if questions %}
-        <div class="questions-list">
-            {% for q in questions %}
-            <a href="{{ url_for('question_detail', question_id=q.id) }}" class="question-card">
-                <div class="question-main">
-                    <span class="question-text">{{ q.canonical_text }}</span>
-                </div>
-                <div class="question-meta">
-                    <span class="times-asked">{{ q.times_asked }}x asked</span>
-                    <span class="answer-count">{{ q.answer_count }} answers</span>
-                    <span class="status-badge status-{{ q.status }}">{{ q.status }}</span>
-                </div>
+            {% if sub.top_questions %}
+            <div class="top-questions">
+                {% for q in sub.top_questions %}
+                <a href="{{ url_for('question_detail', question_id=q.id) }}" class="top-question">
+                    <span class="question-text">{{ q.canonical_text|truncate_text(45) }}</span>
+                    <span class="times-asked">{{ q.times_asked }}x</span>
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="no-questions">No questions yet</p>
+            {% endif %}
+
+            <a href="{{ url_for('subcategory_detail', subcategory_id=sub.id) }}" class="view-all-link">
+                View all questions
             </a>
-            {% endfor %}
         </div>
-
-        <!-- Pagination -->
-        {% if total_pages > 1 %}
-        <div class="pagination">
-            {% if page > 1 %}
-            <a href="{{ url_for('cluster_detail', cluster_id=cluster.id, page=page-1, status=current_status, sort=sort) }}">&laquo; Previous</a>
-            {% endif %}
-
-            <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
-
-            {% if page < total_pages %}
-            <a href="{{ url_for('cluster_detail', cluster_id=cluster.id, page=page+1, status=current_status, sort=sort) }}">Next &raquo;</a>
-            {% endif %}
-        </div>
-        {% endif %}
-        {% else %}
-        <p class="empty-state">No questions in this cluster yet</p>
-        {% endif %}
+        {% endfor %}
     </div>
+    {% else %}
+    <p class="empty-state">No subcategories defined for this cluster.</p>
+    {% endif %}
 </div>
-{% endblock %}
-
-{% block head %}
-<style>
-.cluster-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 50px;
-    height: 50px;
-    border-radius: 12px;
-    font-size: 1.5rem;
-    margin-right: 0.5rem;
-}
-
-.cluster-description {
-    color: #666;
-    margin-top: 0.5rem;
-}
-
-.filter-bar {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 2rem;
-    margin: 1.5rem 0;
-    padding: 1rem;
-    background: #f8f9fa;
-    border-radius: 8px;
-}
-
-.filter-group {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.filter-group label {
-    font-weight: bold;
-    color: #666;
-    margin-right: 0.5rem;
-}
-
-.filter-btn {
-    padding: 0.5rem 1rem;
-    text-decoration: none;
-    color: #666;
-    border-radius: 4px;
-    transition: all 0.2s;
-}
-
-.filter-btn:hover {
-    background: #e9ecef;
-}
-
-.filter-btn.active {
-    background: #4a90d9;
-    color: white;
-}
-
-.questions-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-}
-
-.question-card {
-    display: flex;
-    flex-direction: column;
-    padding: 1rem;
-    background: #f8f9fa;
-    border-radius: 6px;
-    text-decoration: none;
-    color: inherit;
-    transition: all 0.2s;
-}
-
-.question-card:hover {
-    background: #e9ecef;
-    transform: translateX(4px);
-}
-
-.question-main {
-    margin-bottom: 0.5rem;
-}
-
-.question-text {
-    color: #333;
-    font-size: 1rem;
-}
-
-.question-meta {
-    display: flex;
-    gap: 1rem;
-    font-size: 0.85rem;
-    color: #888;
-}
-
-.status-badge {
-    padding: 0.2rem 0.5rem;
-    border-radius: 4px;
-    font-size: 0.75rem;
-    font-weight: bold;
-}
-
-.status-resolved { background: #d4edda; color: #155724; }
-.status-needs_work { background: #fff3cd; color: #856404; }
-.status-no_answer { background: #e9ecef; color: #495057; }
-</style>
 {% endblock %}

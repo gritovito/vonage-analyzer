@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}{{ subcategory.name }} - Response Scripts Library{% endblock %}
+
+{% block content %}
+<!-- Breadcrumb -->
+<nav class="breadcrumb">
+    <a href="{{ url_for('index') }}">Home</a>
+    <span class="separator">/</span>
+    <a href="{{ url_for('clusters') }}">Categories</a>
+    <span class="separator">/</span>
+    <a href="{{ url_for('cluster_detail', cluster_id=subcategory.cluster_id) }}">{{ subcategory.cluster_name }}</a>
+    <span class="separator">/</span>
+    <span class="current">{{ subcategory.name }}</span>
+</nav>
+
+<!-- Subcategory Header -->
+<div class="page-header">
+    <div class="subcategory-badge" style="background-color: {{ subcategory.cluster_color }}20; color: {{ subcategory.cluster_color }}">
+        {{ subcategory.cluster_icon }}
+    </div>
+    <div>
+        <h1>{{ subcategory.name }}</h1>
+        <p class="subcategory-parent">{{ subcategory.cluster_name }}</p>
+    </div>
+</div>
+
+<!-- Filter Bar -->
+<div class="filter-bar">
+    <div class="filter-group">
+        <label>Sort by:</label>
+        <a href="{{ url_for('subcategory_detail', subcategory_id=subcategory.id, sort='times_asked') }}"
+           class="filter-btn {% if sort == 'times_asked' %}active{% endif %}">Most Asked</a>
+        <a href="{{ url_for('subcategory_detail', subcategory_id=subcategory.id, sort='recent') }}"
+           class="filter-btn {% if sort == 'recent' %}active{% endif %}">Recent</a>
+    </div>
+    <div class="total-count">{{ total }} questions</div>
+</div>
+
+<!-- Questions List -->
+<div class="questions-list">
+    {% if questions %}
+        {% for q in questions %}
+        <div class="question-card">
+            <a href="{{ url_for('question_detail', question_id=q.id) }}" class="question-main">
+                <span class="question-text">{{ q.canonical_text }}</span>
+            </a>
+            <div class="question-meta">
+                <span class="times-asked">{{ q.times_asked }}x asked</span>
+                <span class="script-count">{{ q.script_count or 0 }} scripts</span>
+                <span class="status-badge status-{{ q.status }}">{{ q.status }}</span>
+            </div>
+        </div>
+        {% endfor %}
+
+        <!-- Pagination -->
+        {% if total_pages > 1 %}
+        <div class="pagination">
+            {% if page > 1 %}
+            <a href="{{ url_for('subcategory_detail', subcategory_id=subcategory.id, page=page-1, sort=sort) }}" class="page-link">&laquo; Previous</a>
+            {% endif %}
+
+            <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
+
+            {% if page < total_pages %}
+            <a href="{{ url_for('subcategory_detail', subcategory_id=subcategory.id, page=page+1, sort=sort) }}" class="page-link">Next &raquo;</a>
+            {% endif %}
+        </div>
+        {% endif %}
+    {% else %}
+    <div class="empty-state">
+        <p>No questions in this subcategory yet.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
