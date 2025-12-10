@@ -77,7 +77,7 @@ def find_similar_question(question_text, threshold=None):
     best_similarity = 0.0
 
     for question in existing_questions:
-        if question['embedding']:
+        if question.get('embedding'):
             similarity = cosine_similarity(new_embedding, question['embedding'])
             if similarity > best_similarity:
                 best_similarity = similarity
@@ -85,10 +85,10 @@ def find_similar_question(question_text, threshold=None):
 
     if best_match and best_similarity >= threshold:
         return {
-            'question_id': best_match['id'],
+            'question_id': best_match.get('id'),
             'similarity': best_similarity,
-            'cluster_id': best_match['cluster_id'],
-            'canonical_text': best_match['canonical_text'],
+            'cluster_id': best_match.get('cluster_id'),
+            'canonical_text': best_match.get('canonical_text'),
             'embedding': new_embedding
         }
 
@@ -119,36 +119,38 @@ def semantic_search(query_text, limit=10, threshold=0.3):
 
     results = []
     for question in existing_questions:
-        if question['embedding']:
+        if question.get('embedding'):
             similarity = cosine_similarity(query_embedding, question['embedding'])
 
             if similarity >= threshold:
-                full_question = db.get_question(question['id'])
+                question_id = question.get('id')
+                if not question_id:
+                    continue
+                full_question = db.get_question(question_id)
                 if full_question:
                     # Get best script (v3)
-                    best_script = db.get_best_script(question['id'])
+                    best_script = db.get_best_script(question_id)
 
                     result = {
-                        'id': question['id'],
-                        'canonical_text': question['canonical_text'],
+                        'id': question_id,
+                        'canonical_text': question.get('canonical_text', ''),
                         'similarity': round(similarity * 100, 1),
-                        'cluster_name': full_question['cluster_name'],
-                        'cluster_icon': full_question['cluster_icon'],
-                        'cluster_color': full_question['cluster_color'],
-                        'status': full_question['status'],
-                        'times_asked': full_question['times_asked'],
-                        'answer_count': full_question['answer_count'],
-                        'script_count': db.get_scripts_count(question['id'])
+                        'cluster_name': full_question.get('cluster_name'),
+                        'cluster_icon': full_question.get('cluster_icon'),
+                        'cluster_color': full_question.get('cluster_color'),
+                        'status': full_question.get('status'),
+                        'times_asked': full_question.get('times_asked', 0),
+                        'script_count': full_question.get('script_count', 0)
                     }
 
                     # Add best script info if available
                     if best_script:
                         result['best_script'] = {
-                            'id': best_script['id'],
-                            'text': best_script['script_text'],
-                            'type': best_script['script_type'],
-                            'effectiveness': best_script['effectiveness'],
-                            'has_steps': bool(best_script['has_steps'])
+                            'id': best_script.get('id'),
+                            'text': best_script.get('script_text', ''),
+                            'type': best_script.get('script_type', 'instruction'),
+                            'effectiveness': best_script.get('effectiveness', 0),
+                            'has_steps': bool(best_script.get('has_steps', False))
                         }
 
                     results.append(result)
