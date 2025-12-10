@@ -126,10 +126,14 @@ def semantic_search(query_text, limit=10, threshold=0.3):
                 question_id = question.get('id')
                 if not question_id:
                     continue
-                full_question = db.get_question(question_id)
-                if full_question:
+                full_question_row = db.get_question(question_id)
+                if full_question_row:
+                    # Convert sqlite3.Row to dict for safe .get() access
+                    full_question = dict(full_question_row)
+
                     # Get best script (v3)
-                    best_script = db.get_best_script(question_id)
+                    best_script_row = db.get_best_script(question_id)
+                    best_script = dict(best_script_row) if best_script_row else None
 
                     result = {
                         'id': question_id,
