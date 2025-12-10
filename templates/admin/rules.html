@@ -1,0 +1,221 @@
+{% extends 'admin/base.html' %}
+
+{% block title %}Filter Rules - Admin{% endblock %}
+
+{% block admin_content %}
+<div class="page-header">
+    <h1>Filter Rules</h1>
+</div>
+
+<!-- Add Rule Form -->
+<div class="card">
+    <div class="card-header">
+        <h2>Add New Rule</h2>
+    </div>
+    <div class="card-body">
+        <form id="addRuleForm" class="rule-form">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Rule Type</label>
+                    <select name="rule_type" required>
+                        <option value="contains">Contains text</option>
+                        <option value="not_contains">Does NOT contain text</option>
+                        <option value="word_count_lt">Word count less than</option>
+                        <option value="word_count_gt">Word count greater than</option>
+                        <option value="starts_with">Starts with</option>
+                        <option value="regex">Regex pattern</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Value</label>
+                    <input type="text" name="condition_value" placeholder="e.g. 'Thank you for calling' or '10'" required>
+                </div>
+                <div class="form-group">
+                    <label>Action</label>
+                    <select name="action">
+                        <option value="auto_reject">Auto Reject</option>
+                        <option value="auto_approve">Auto Approve</option>
+                        <option value="mark_pending">Mark as Pending</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Description (optional)</label>
+                <input type="text" name="description" placeholder="Describe what this rule catches">
+            </div>
+            <button type="submit" class="btn btn-primary">Add Rule</button>
+        </form>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="card">
+    <div class="card-header">
+        <h2>Quick Actions</h2>
+    </div>
+    <div class="card-body">
+        <button class="btn btn-primary" onclick="applyRules()">
+            Apply Rules to All Existing Questions
+        </button>
+        <p class="help-text">This will re-evaluate all questions against the current filter rules.</p>
+    </div>
+</div>
+
+<!-- Existing Rules -->
+<div class="card">
+    <div class="card-header">
+        <h2>Active Rules ({{ rules|length }})</h2>
+    </div>
+    <div class="card-body">
+        {% if rules %}
+        <div class="rules-list">
+            {% for rule in rules %}
+            <div class="rule-item {% if not rule.is_active %}inactive{% endif %}" data-id="{{ rule.id }}">
+                <div class="rule-toggle">
+                    <label class="toggle-switch">
+                        <input type="checkbox" {% if rule.is_active %}checked{% endif %} onchange="toggleRule({{ rule.id }})">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="rule-content">
+                    <div class="rule-condition">
+                        <span class="rule-type">{{ rule.rule_type }}</span>
+                        <span class="rule-value">"{{ rule.condition_value }}"</span>
+                        <span class="rule-arrow">-></span>
+                        <span class="rule-action action-{{ rule.action }}">{{ rule.action }}</span>
+                    </div>
+                    {% if rule.description %}
+                    <div class="rule-description">{{ rule.description }}</div>
+                    {% endif %}
+                </div>
+                <div class="rule-actions">
+                    <button class="btn btn-danger btn-sm" onclick="deleteRule({{ rule.id }})">Delete</button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <h3>No filter rules</h3>
+            <p>Add rules above to automatically filter incoming questions</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Rule Types Help -->
+<div class="card">
+    <div class="card-header">
+        <h2>Rule Types Reference</h2>
+    </div>
+    <div class="card-body">
+        <div class="help-grid">
+            <div class="help-item">
+                <strong>contains</strong>
+                <p>Text contains the specified phrase (case-insensitive)</p>
+                <code>Example: "Thank you for calling"</code>
+            </div>
+            <div class="help-item">
+                <strong>not_contains</strong>
+                <p>Text does NOT contain the specified phrase</p>
+                <code>Example: "urgent"</code>
+            </div>
+            <div class="help-item">
+                <strong>word_count_lt</strong>
+                <p>Question has fewer words than specified number</p>
+                <code>Example: "10" (less than 10 words)</code>
+            </div>
+            <div class="help-item">
+                <strong>word_count_gt</strong>
+                <p>Question has more words than specified number</p>
+                <code>Example: "200" (more than 200 words)</code>
+            </div>
+            <div class="help-item">
+                <strong>starts_with</strong>
+                <p>Text starts with the specified phrase</p>
+                <code>Example: "Hello"</code>
+            </div>
+            <div class="help-item">
+                <strong>regex</strong>
+                <p>Text matches the regular expression pattern</p>
+                <code>Example: "press\s+\d+" (matches "press 1", "press 2", etc.)</code>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+function showToast(message) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+document.getElementById('addRuleForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const formData = new FormData(this);
+    const data = {
+        rule_type: formData.get('rule_type'),
+        condition_value: formData.get('condition_value'),
+        action: formData.get('action'),
+        description: formData.get('description')
+    };
+
+    fetch('/api/admin/rule', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.success) {
+            showToast('Rule added');
+            location.reload();
+        } else {
+            showToast('Error: ' + (result.error || 'Failed to add rule'));
+        }
+    });
+});
+
+function toggleRule(ruleId) {
+    fetch(`/api/admin/rule/${ruleId}/toggle`, {method: 'POST'})
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            const item = document.querySelector(`[data-id="${ruleId}"]`);
+            item.classList.toggle('inactive');
+            showToast('Rule toggled');
+        }
+    });
+}
+
+function deleteRule(ruleId) {
+    if (!confirm('Delete this rule?')) return;
+
+    fetch(`/api/admin/rule/${ruleId}/delete`, {method: 'POST'})
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            document.querySelector(`[data-id="${ruleId}"]`).remove();
+            showToast('Rule deleted');
+        }
+    });
+}
+
+function applyRules() {
+    if (!confirm('Apply all active rules to existing questions? This may change moderation statuses.')) return;
+
+    fetch('/api/admin/rules/apply', {method: 'POST'})
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showToast(`Updated: ${data.updated.pending} pending, ${data.updated.approved} approved, ${data.updated.rejected} rejected`);
+        }
+    });
+}
+</script>
+{% endblock %}

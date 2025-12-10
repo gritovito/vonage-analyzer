@@ -556,6 +556,301 @@ def api_update_embeddings():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ==================== ADMIN ROUTES ====================
+
+@app.route('/admin')
+def admin_dashboard():
+    """Admin dashboard with statistics"""
+    stats = db.get_admin_stats()
+    pending_questions = db.get_questions_for_moderation('pending', limit=10)
+    recent_log = db.get_moderation_log(limit=10)
+
+    return render_template('admin/dashboard.html',
+                           stats=stats,
+                           pending_questions=pending_questions,
+                           recent_log=recent_log)
+
+
+@app.route('/admin/moderation')
+def admin_moderation():
+    """Moderation page for reviewing questions"""
+    status_filter = request.args.get('status', 'pending')
+    page = int(request.args.get('page', 1))
+    per_page = 20
+    offset = (page - 1) * per_page
+
+    questions = db.get_questions_for_moderation(status_filter, limit=per_page, offset=offset)
+    counts = db.get_moderation_counts()
+    total = counts.get(status_filter, 0)
+    total_pages = (total + per_page - 1) // per_page
+
+    return render_template('admin/moderation.html',
+                           questions=questions,
+                           counts=counts,
+                           status_filter=status_filter,
+                           page=page,
+                           total_pages=total_pages,
+                           total=total)
+
+
+@app.route('/admin/rules')
+def admin_rules():
+    """Filter rules management page"""
+    rules = db.get_filter_rules()
+    return render_template('admin/rules.html', rules=rules)
+
+
+@app.route('/admin/merge')
+def admin_merge():
+    """Question merge tool"""
+    source_id = request.args.get('source')
+    source_question = None
+    similar_questions = []
+
+    if source_id:
+        source_question = db.get_question_detail(int(source_id))
+        if source_question:
+            similar_questions = db.get_similar_questions_for_merge(int(source_id))
+
+    return render_template('admin/merge.html',
+                           source_question=source_question,
+                           similar_questions=similar_questions)
+
+
+@app.route('/admin/question/<int:question_id>/edit')
+def admin_question_edit(question_id):
+    """Question edit page"""
+    question = db.get_question_detail(question_id)
+    if not question:
+        flash('Question not found', 'error')
+        return redirect(url_for('admin_moderation'))
+
+    clusters = db.get_clusters()
+    subcategories = {}
+    for c in clusters:
+        subcategories[c['id']] = db.get_subcategories_for_cluster(c['id'])
+
+    return render_template('admin/question_edit.html',
+                           question=question,
+                           clusters=clusters,
+                           subcategories=subcategories)
+
+
+@app.route('/admin/log')
+def admin_log():
+    """Moderation log page"""
+    page = int(request.args.get('page', 1))
+    question_id = request.args.get('question_id')
+    per_page = 50
+    offset = (page - 1) * per_page
+
+    if question_id:
+        question_id = int(question_id)
+        log_entries = db.get_moderation_log(limit=per_page, offset=offset, question_id=question_id)
+        total = db.get_moderation_log_count(question_id=question_id)
+    else:
+        log_entries = db.get_moderation_log(limit=per_page, offset=offset)
+        total = db.get_moderation_log_count()
+
+    total_pages = (total + per_page - 1) // per_page
+
+    return render_template('admin/log.html',
+                           log_entries=log_entries,
+                           page=page,
+                           total_pages=total_pages,
+                           total=total,
+                           question_id=question_id)
+
+
+# ==================== ADMIN API ROUTES ====================
+
+@app.route('/api/admin/question/<int:question_id>/approve', methods=['POST'])
+def api_admin_approve_question(question_id):
+    """Approve a question"""
+    data = request.get_json() or {}
+    reason = data.get('reason', '')
+
+    success = db.set_question_moderation_status(question_id, 'approved', reason)
+    return jsonify({'success': success})
+
+
+@app.route('/api/admin/question/<int:question_id>/reject', methods=['POST'])
+def api_admin_reject_question(question_id):
+    """Reject a question"""
+    data = request.get_json() or {}
+    reason = data.get('reason', '')
+
+    success = db.set_question_moderation_status(question_id, 'rejected', reason)
+    return jsonify({'success': success})
+
+
+@app.route('/api/admin/question/<int:question_id>/pending', methods=['POST'])
+def api_admin_pending_question(question_id):
+    """Set question to pending"""
+    success = db.set_question_moderation_status(question_id, 'pending')
+    return jsonify({'success': success})
+
+
+@app.route('/api/admin/question/<int:question_id>/delete', methods=['POST'])
+def api_admin_delete_question(question_id):
+    """Delete a question"""
+    data = request.get_json() or {}
+    reason = data.get('reason', '')
+
+    success = db.delete_question(question_id, reason)
+    return jsonify({'success': success})
+
+
+@app.route('/api/admin/questions/bulk', methods=['POST'])
+def api_admin_bulk_action():
+    """Bulk action on multiple questions"""
+    data = request.get_json() or {}
+    question_ids = data.get('question_ids', [])
+    action = data.get('action', '')
+    reason = data.get('reason', '')
+
+    if not question_ids:
+        return jsonify({'error': 'No questions selected'}), 400
+
+    if action == 'approve':
+        count = db.bulk_set_moderation_status(question_ids, 'approved', reason)
+    elif action == 'reject':
+        count = db.bulk_set_moderation_status(question_ids, 'rejected', reason)
+    elif action == 'delete':
+        count = db.bulk_delete_questions(question_ids, reason)
+    else:
+        return jsonify({'error': 'Invalid action'}), 400
+
+    return jsonify({'success': True, 'count': count})
+
+
+@app.route('/api/admin/question/<int:question_id>/update', methods=['POST'])
+def api_admin_update_question(question_id):
+    """Update question text and category"""
+    data = request.get_json() or {}
+    canonical_text = data.get('canonical_text')
+    cluster_id = data.get('cluster_id')
+    subcategory_id = data.get('subcategory_id')
+    moderation_status = data.get('moderation_status')
+
+    if canonical_text:
+        db.update_question_text(question_id, canonical_text)
+
+    if cluster_id:
+        db.update_question_cluster(question_id, cluster_id, subcategory_id)
+
+    if moderation_status:
+        db.set_question_moderation_status(question_id, moderation_status)
+
+    return jsonify({'success': True})
+
+
+@app.route('/api/admin/script/<int:script_id>/update', methods=['POST'])
+def api_admin_update_script(script_id):
+    """Update script text"""
+    data = request.get_json() or {}
+    script_text = data.get('script_text')
+
+    if script_text:
+        success = db.update_script_text(script_id, script_text)
+        return jsonify({'success': success})
+    return jsonify({'error': 'No text provided'}), 400
+
+
+@app.route('/api/admin/script/<int:script_id>/delete', methods=['POST'])
+def api_admin_delete_script(script_id):
+    """Delete a script"""
+    success = db.delete_script(script_id)
+    return jsonify({'success': success})
+
+
+@app.route('/api/admin/script/<int:script_id>/set-best', methods=['POST'])
+def api_admin_set_best_script(script_id):
+    """Set script as best"""
+    data = request.get_json() or {}
+    question_id = data.get('question_id')
+
+    if not question_id:
+        return jsonify({'error': 'Question ID required'}), 400
+
+    success = db.set_best_script(question_id, script_id)
+    return jsonify({'success': success})
+
+
+@app.route('/api/admin/variant/<int:variant_id>/delete', methods=['POST'])
+def api_admin_delete_variant(variant_id):
+    """Delete a question variant"""
+    success = db.delete_variant(variant_id)
+    return jsonify({'success': success})
+
+
+@app.route('/api/admin/merge', methods=['POST'])
+def api_admin_merge_questions():
+    """Merge two questions"""
+    data = request.get_json() or {}
+    source_id = data.get('source_id')
+    target_id = data.get('target_id')
+
+    if not source_id or not target_id:
+        return jsonify({'error': 'Both source and target required'}), 400
+
+    success, message = db.merge_questions(source_id, target_id)
+    return jsonify({'success': success, 'message': message})
+
+
+@app.route('/api/admin/rule', methods=['POST'])
+def api_admin_add_rule():
+    """Add a new filter rule"""
+    data = request.get_json() or {}
+    rule_type = data.get('rule_type')
+    condition_value = data.get('condition_value')
+    action = data.get('action', 'auto_reject')
+    description = data.get('description', '')
+
+    if not rule_type or not condition_value:
+        return jsonify({'error': 'Rule type and condition value required'}), 400
+
+    rule_id = db.add_filter_rule(rule_type, condition_value, action, description)
+    return jsonify({'success': True, 'rule_id': rule_id})
+
+
+@app.route('/api/admin/rule/<int:rule_id>/toggle', methods=['POST'])
+def api_admin_toggle_rule(rule_id):
+    """Toggle filter rule active status"""
+    success = db.toggle_filter_rule(rule_id)
+    return jsonify({'success': success})
+
+
+@app.route('/api/admin/rule/<int:rule_id>/delete', methods=['POST'])
+def api_admin_delete_rule(rule_id):
+    """Delete a filter rule"""
+    success = db.delete_filter_rule(rule_id)
+    return jsonify({'success': success})
+
+
+@app.route('/api/admin/rules/apply', methods=['POST'])
+def api_admin_apply_rules():
+    """Apply filter rules to all existing questions"""
+    updated = db.apply_rules_to_existing_questions()
+    return jsonify({'success': True, 'updated': updated})
+
+
+@app.route('/api/admin/search-questions')
+def api_admin_search_questions():
+    """Search questions for merge (includes all moderation statuses)"""
+    query = request.args.get('q', '')
+    if len(query) < 2:
+        return jsonify([])
+
+    results = db.search_questions_text(query, limit=10, approved_only=False)
+    return jsonify([{
+        'id': r['id'],
+        'canonical_text': r['canonical_text'],
+        'cluster_name': r['cluster_name'],
+        'times_asked': r['times_asked']
+    } for r in results])
+
+
 # ==================== ERROR HANDLERS ====================
 
 @app.errorhandler(404)

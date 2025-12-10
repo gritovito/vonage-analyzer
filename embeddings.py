@@ -101,10 +101,16 @@ def find_similar_question(question_text, threshold=None):
     }
 
 
-def semantic_search(query_text, limit=10, threshold=0.3):
+def semantic_search(query_text, limit=10, threshold=0.3, approved_only=True):
     """
     Search for similar questions using semantic matching
     Includes best script for each question (v3)
+
+    Args:
+        query_text: The search query
+        limit: Maximum number of results
+        threshold: Minimum similarity threshold
+        approved_only: If True, only return approved questions (for operators)
 
     Returns:
         List of questions with similarity scores and best scripts
@@ -131,6 +137,12 @@ def semantic_search(query_text, limit=10, threshold=0.3):
                     # Convert sqlite3.Row to dict for safe .get() access
                     full_question = dict(full_question_row)
 
+                    # Filter by moderation status for operator search
+                    if approved_only:
+                        moderation_status = full_question.get('moderation_status', 'pending')
+                        if moderation_status != 'approved':
+                            continue
+
                     # Get best script (v3)
                     best_script_row = db.get_best_script(question_id)
                     best_script = dict(best_script_row) if best_script_row else None
@@ -143,6 +155,7 @@ def semantic_search(query_text, limit=10, threshold=0.3):
                         'cluster_icon': full_question.get('cluster_icon'),
                         'cluster_color': full_question.get('cluster_color'),
                         'status': full_question.get('status'),
+                        'moderation_status': full_question.get('moderation_status', 'pending'),
                         'times_asked': full_question.get('times_asked', 0),
                         'script_count': full_question.get('script_count', 0)
                     }

@@ -155,6 +155,7 @@ def process_document(doc_id):
     Process a single document with two-stage analysis:
     Stage 1: Classification (cluster + subcategory + question)
     Stage 2: Script extraction (actual operator responses)
+    Stage 3: Apply filter rules for moderation status
     """
     doc = db.get_document(doc_id)
     if not doc:
@@ -171,7 +172,8 @@ def process_document(doc_id):
         db.update_document_status(doc_id, 'error', 'No content')
         return False
 
-    logger.info(f"Processing document {doc_id}: {doc['filename']}")
+    filename = doc['filename']
+    logger.info(f"Processing document {doc_id}: {filename}")
 
     # Stage 1: Classification
     classification = analyze_classification(content)
@@ -213,10 +215,21 @@ def process_document(doc_id):
         db.add_question_variant(question_id, question_text, doc_id)
         db.increment_question_asked(question_id)
     else:
+        # Apply filter rules to determine moderation status
+        moderation_status = db.apply_filter_rules(question_text)
+
         embedding = match_result.get('embedding') if match_result else None
         question_id = db.add_question(cluster_id, question_text, embedding, subcategory_id=subcategory_id)
+
+        # Update moderation status and source filename
+        with db.get_db() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE questions SET moderation_status = ?, source_filename = ? WHERE id = ?
+            """, (moderation_status, filename, question_id))
+
         new_question = True
-        logger.info(f"Created new question (id={question_id}) in cluster '{cluster_name}' / subcategory '{subcategory_name}'")
+        logger.info(f"Created new question (id={question_id}) in cluster '{cluster_name}' / subcategory '{subcategory_name}' [moderation: {moderation_status}]")
 
     # Stage 2: Script extraction
     extraction = extract_scripts(content)

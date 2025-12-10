@@ -1,0 +1,195 @@
+{% extends 'admin/base.html' %}
+
+{% set pending_count = stats.pending_count %}
+
+{% block title %}Admin Dashboard - Knowledge Hub{% endblock %}
+
+{% block admin_content %}
+<div class="page-header">
+    <h1>Admin Dashboard</h1>
+</div>
+
+<!-- Stats Cards -->
+<div class="admin-stats-grid">
+    <div class="admin-stat-card">
+        <div class="admin-stat-value">{{ stats.total_questions }}</div>
+        <div class="admin-stat-label">Total Questions</div>
+    </div>
+    <div class="admin-stat-card stat-pending">
+        <div class="admin-stat-value">{{ stats.pending_count }}</div>
+        <div class="admin-stat-label">Pending Review</div>
+    </div>
+    <div class="admin-stat-card stat-approved">
+        <div class="admin-stat-value">{{ stats.approved_count }}</div>
+        <div class="admin-stat-label">Approved</div>
+    </div>
+    <div class="admin-stat-card stat-rejected">
+        <div class="admin-stat-value">{{ stats.rejected_count }}</div>
+        <div class="admin-stat-label">Rejected</div>
+    </div>
+    <div class="admin-stat-card">
+        <div class="admin-stat-value">{{ stats.total_scripts }}</div>
+        <div class="admin-stat-label">Total Scripts</div>
+    </div>
+    <div class="admin-stat-card">
+        <div class="admin-stat-value">{{ stats.active_rules }}</div>
+        <div class="admin-stat-label">Active Rules</div>
+    </div>
+</div>
+
+<div class="admin-grid-2">
+    <!-- Pending Questions -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Questions Pending Review</h2>
+            <a href="{{ url_for('admin_moderation') }}" class="btn btn-sm">View All</a>
+        </div>
+        <div class="card-body">
+            {% if pending_questions %}
+            <div class="admin-question-list">
+                {% for q in pending_questions %}
+                <div class="admin-question-item">
+                    <div class="admin-question-text">{{ q.canonical_text|truncate_text(80) }}</div>
+                    <div class="admin-question-meta">
+                        <span class="cluster-tag" style="background-color: {{ q.cluster_color }}20; color: {{ q.cluster_color }}">
+                            {{ q.cluster_icon }} {{ q.cluster_name }}
+                        </span>
+                        <span class="times-asked">{{ q.times_asked }}x</span>
+                    </div>
+                    <div class="admin-question-actions">
+                        <button class="btn btn-approve btn-sm" onclick="quickApprove({{ q.id }})">Approve</button>
+                        <button class="btn btn-reject btn-sm" onclick="quickReject({{ q.id }})">Reject</button>
+                        <a href="{{ url_for('admin_question_edit', question_id=q.id) }}" class="btn btn-sm">Edit</a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state success">
+                <h3>All caught up!</h3>
+                <p>No questions pending review</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Recent Activity -->
+    <div class="card">
+        <div class="card-header">
+            <h2>Recent Activity</h2>
+            <a href="{{ url_for('admin_log') }}" class="btn btn-sm">View All</a>
+        </div>
+        <div class="card-body">
+            {% if recent_log %}
+            <div class="admin-log-list">
+                {% for log in recent_log %}
+                <div class="admin-log-item">
+                    <div class="log-action {{ log.action }}">
+                        {% if 'approved' in log.action %}
+                        <span class="action-badge approved">Approved</span>
+                        {% elif 'rejected' in log.action %}
+                        <span class="action-badge rejected">Rejected</span>
+                        {% elif 'deleted' in log.action %}
+                        <span class="action-badge deleted">Deleted</span>
+                        {% elif 'merged' in log.action %}
+                        <span class="action-badge merged">Merged</span>
+                        {% elif 'edited' in log.action %}
+                        <span class="action-badge edited">Edited</span>
+                        {% else %}
+                        <span class="action-badge">{{ log.action }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="log-details">
+                        {% if log.question_text %}
+                        <span class="log-question">{{ log.question_text|truncate_text(50) }}</span>
+                        {% else %}
+                        <span class="log-question">Question #{{ log.question_id }}</span>
+                        {% endif %}
+                        <span class="log-time">{{ log.created_at|datetime }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <p>No activity yet</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="card">
+    <div class="card-header">
+        <h2>Quick Actions</h2>
+    </div>
+    <div class="card-body">
+        <div class="admin-actions">
+            <button class="btn btn-primary" onclick="applyRules()">
+                Apply Filter Rules to Existing Questions
+            </button>
+            <a href="{{ url_for('admin_rules') }}" class="btn">
+                Manage Filter Rules
+            </a>
+            <a href="{{ url_for('admin_merge') }}" class="btn">
+                Merge Duplicate Questions
+            </a>
+        </div>
+    </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+function showToast(message) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+function quickApprove(questionId) {
+    fetch(`/api/admin/question/${questionId}/approve`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'}
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Question approved');
+            location.reload();
+        }
+    });
+}
+
+function quickReject(questionId) {
+    const reason = prompt('Reason for rejection (optional):');
+    fetch(`/api/admin/question/${questionId}/reject`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({reason: reason || ''})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Question rejected');
+            location.reload();
+        }
+    });
+}
+
+function applyRules() {
+    if (!confirm('Apply filter rules to all existing questions? This may change moderation statuses.')) return;
+
+    fetch('/api/admin/rules/apply', {method: 'POST'})
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showToast(`Updated: ${data.updated.pending} pending, ${data.updated.approved} approved, ${data.updated.rejected} rejected`);
+            setTimeout(() => location.reload(), 2000);
+        }
+    });
+}
+</script>
+{% endblock %}

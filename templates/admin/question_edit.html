@@ -1,0 +1,270 @@
+{% extends 'admin/base.html' %}
+
+{% block title %}Edit Question - Admin{% endblock %}
+
+{% block admin_content %}
+<div class="page-header">
+    <h1>Edit Question #{{ question.id }}</h1>
+    <div class="header-actions">
+        <a href="{{ url_for('admin_moderation') }}" class="btn">Back to Moderation</a>
+        <a href="{{ url_for('question_detail', question_id=question.id) }}" class="btn" target="_blank">View Public Page</a>
+    </div>
+</div>
+
+<!-- Main Question Form -->
+<div class="card">
+    <div class="card-header">
+        <h2>Question Details</h2>
+    </div>
+    <div class="card-body">
+        <form id="questionForm">
+            <div class="form-group">
+                <label>Canonical Text</label>
+                <textarea name="canonical_text" rows="3" class="form-textarea">{{ question.canonical_text }}</textarea>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Cluster</label>
+                    <select name="cluster_id" id="clusterSelect">
+                        {% for c in clusters %}
+                        <option value="{{ c.id }}" {% if c.id == question.cluster_id %}selected{% endif %}>
+                            {{ c.icon }} {{ c.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Subcategory</label>
+                    <select name="subcategory_id" id="subcategorySelect">
+                        <option value="">-- None --</option>
+                        {% for c in clusters %}
+                        {% for sub in subcategories[c.id] %}
+                        <option value="{{ sub.id }}" data-cluster="{{ c.id }}"
+                                {% if sub.id == question.subcategory_id %}selected{% endif %}>
+                            {{ sub.name }}
+                        </option>
+                        {% endfor %}
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Moderation Status</label>
+                    <select name="moderation_status">
+                        <option value="pending" {% if question.moderation_status == 'pending' %}selected{% endif %}>Pending</option>
+                        <option value="approved" {% if question.moderation_status == 'approved' %}selected{% endif %}>Approved</option>
+                        <option value="rejected" {% if question.moderation_status == 'rejected' %}selected{% endif %}>Rejected</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Question Variants -->
+<div class="card">
+    <div class="card-header">
+        <h2>Question Variants ({{ question.variants|length if question.variants else 0 }})</h2>
+    </div>
+    <div class="card-body">
+        {% if question.variants %}
+        <div class="variants-edit-list">
+            {% for v in question.variants %}
+            <div class="variant-edit-item" data-id="{{ v.id }}">
+                <div class="variant-text">{{ v.variant_text }}</div>
+                <button class="btn btn-danger btn-sm" onclick="deleteVariant({{ v.id }})">Delete</button>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="empty-text">No variants for this question</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Scripts -->
+<div class="card">
+    <div class="card-header">
+        <h2>Response Scripts ({{ question.scripts|length if question.scripts else 0 }})</h2>
+    </div>
+    <div class="card-body">
+        {% if question.scripts %}
+        <div class="scripts-edit-list">
+            {% for s in question.scripts %}
+            <div class="script-edit-item {% if s.is_best %}is-best{% endif %}" data-id="{{ s.id }}">
+                <div class="script-header">
+                    {% if s.is_best %}
+                    <span class="best-badge">Best Script</span>
+                    {% else %}
+                    <button class="btn btn-sm" onclick="setBestScript({{ s.id }})">Set as Best</button>
+                    {% endif %}
+                    <span class="effectiveness-badge">{{ s.effectiveness }}%</span>
+                </div>
+                <textarea class="script-edit-text" id="script_{{ s.id }}">{{ s.script_text }}</textarea>
+                <div class="script-actions">
+                    <button class="btn btn-primary btn-sm" onclick="saveScript({{ s.id }})">Save Script</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteScript({{ s.id }})">Delete</button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="empty-text">No scripts for this question</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Danger Zone -->
+<div class="card danger-zone">
+    <div class="card-header">
+        <h2>Danger Zone</h2>
+    </div>
+    <div class="card-body">
+        <div class="danger-actions">
+            <a href="{{ url_for('admin_merge', source=question.id) }}" class="btn">Merge into Another Question</a>
+            <button class="btn btn-danger" onclick="deleteQuestion()">Delete This Question</button>
+        </div>
+        <p class="help-text">Deleting will also remove all variants and scripts.</p>
+    </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+const questionId = {{ question.id }};
+
+function showToast(message) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+// Filter subcategories based on cluster
+const clusterSelect = document.getElementById('clusterSelect');
+const subcategorySelect = document.getElementById('subcategorySelect');
+
+function filterSubcategories() {
+    const clusterId = clusterSelect.value;
+    const options = subcategorySelect.querySelectorAll('option[data-cluster]');
+
+    options.forEach(opt => {
+        opt.style.display = opt.dataset.cluster === clusterId ? '' : 'none';
+    });
+}
+
+clusterSelect.addEventListener('change', filterSubcategories);
+filterSubcategories();
+
+// Save question form
+document.getElementById('questionForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const formData = new FormData(this);
+    const data = {
+        canonical_text: formData.get('canonical_text'),
+        cluster_id: parseInt(formData.get('cluster_id')),
+        subcategory_id: formData.get('subcategory_id') ? parseInt(formData.get('subcategory_id')) : null,
+        moderation_status: formData.get('moderation_status')
+    };
+
+    fetch(`/api/admin/question/${questionId}/update`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.success) {
+            showToast('Question updated');
+        } else {
+            showToast('Error saving question');
+        }
+    });
+});
+
+function deleteVariant(variantId) {
+    if (!confirm('Delete this variant?')) return;
+
+    fetch(`/api/admin/variant/${variantId}/delete`, {method: 'POST'})
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            document.querySelector(`.variant-edit-item[data-id="${variantId}"]`).remove();
+            showToast('Variant deleted');
+        }
+    });
+}
+
+function saveScript(scriptId) {
+    const text = document.getElementById(`script_${scriptId}`).value;
+
+    fetch(`/api/admin/script/${scriptId}/update`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({script_text: text})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Script saved');
+        }
+    });
+}
+
+function deleteScript(scriptId) {
+    if (!confirm('Delete this script?')) return;
+
+    fetch(`/api/admin/script/${scriptId}/delete`, {method: 'POST'})
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            document.querySelector(`.script-edit-item[data-id="${scriptId}"]`).remove();
+            showToast('Script deleted');
+        }
+    });
+}
+
+function setBestScript(scriptId) {
+    fetch(`/api/admin/script/${scriptId}/set-best`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({question_id: questionId})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Best script updated');
+            location.reload();
+        }
+    });
+}
+
+function deleteQuestion() {
+    if (!confirm('DELETE this question? This will also delete all variants and scripts. This cannot be undone!')) return;
+
+    const reason = prompt('Reason for deletion (optional):');
+
+    fetch(`/api/admin/question/${questionId}/delete`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({reason: reason || ''})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Question deleted');
+            setTimeout(() => {
+                window.location.href = '{{ url_for("admin_moderation") }}';
+            }, 1000);
+        }
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,249 @@
+{% extends 'admin/base.html' %}
+
+{% block title %}Merge Questions - Admin{% endblock %}
+
+{% block admin_content %}
+<div class="page-header">
+    <h1>Merge Questions Tool</h1>
+</div>
+
+{% if not source_question %}
+<!-- Search for Source Question -->
+<div class="card">
+    <div class="card-header">
+        <h2>Select Source Question</h2>
+    </div>
+    <div class="card-body">
+        <p class="help-text">Search for a question that you want to merge INTO another question. The source question will be deleted after merge.</p>
+
+        <div class="search-box">
+            <input type="text" id="sourceSearch" class="search-input" placeholder="Search for a question to merge...">
+        </div>
+
+        <div id="searchResults" class="merge-search-results"></div>
+    </div>
+</div>
+{% else %}
+<!-- Source Question Selected -->
+<div class="card merge-source-card">
+    <div class="card-header">
+        <h2>Source Question (will be deleted)</h2>
+        <a href="{{ url_for('admin_merge') }}" class="btn btn-sm">Change</a>
+    </div>
+    <div class="card-body">
+        <div class="merge-question-display">
+            <div class="merge-question-text">{{ source_question.canonical_text }}</div>
+            <div class="merge-question-meta">
+                <span class="cluster-tag" style="background-color: {{ source_question.cluster_color }}20; color: {{ source_question.cluster_color }}">
+                    {{ source_question.cluster_icon }} {{ source_question.cluster_name }}
+                </span>
+                <span>{{ source_question.times_asked }}x asked</span>
+                <span>{{ source_question.variants|length if source_question.variants else 0 }} variants</span>
+                <span>{{ source_question.scripts|length if source_question.scripts else 0 }} scripts</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Select Target Question -->
+<div class="card">
+    <div class="card-header">
+        <h2>Select Target Question (will receive all data)</h2>
+    </div>
+    <div class="card-body">
+        {% if similar_questions %}
+        <p class="help-text">Similar questions (by semantic similarity):</p>
+        <div class="merge-candidates">
+            {% for q in similar_questions %}
+            <div class="merge-candidate" onclick="selectTarget({{ q.id }})">
+                <div class="similarity-badge">{{ q.similarity }}%</div>
+                <div class="candidate-content">
+                    <div class="candidate-text">{{ q.canonical_text }}</div>
+                    <div class="candidate-meta">
+                        <span>{{ q.cluster_name }}</span>
+                        <span>{{ q.times_asked }}x asked</span>
+                    </div>
+                </div>
+                <button class="btn btn-primary btn-sm">Select</button>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="help-text">No similar questions found automatically. Search manually below.</p>
+        {% endif %}
+
+        <hr>
+        <p class="help-text">Or search for any question:</p>
+        <div class="search-box">
+            <input type="text" id="targetSearch" class="search-input" placeholder="Search for target question...">
+        </div>
+        <div id="targetResults" class="merge-search-results"></div>
+    </div>
+</div>
+
+<!-- Merge Preview -->
+<div class="card" id="mergePreview" style="display: none;">
+    <div class="card-header">
+        <h2>Merge Preview</h2>
+    </div>
+    <div class="card-body">
+        <div class="merge-preview-content">
+            <div class="preview-section">
+                <h3>After merge, target question will have:</h3>
+                <ul id="previewDetails"></ul>
+            </div>
+            <div class="preview-warning">
+                <strong>Warning:</strong> Source question #{{ source_question.id }} will be permanently deleted!
+            </div>
+            <button class="btn btn-primary btn-lg" onclick="executeMerge()">
+                Confirm Merge
+            </button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div id="toast" class="toast"></div>
+
+<script>
+let selectedTargetId = null;
+
+function showToast(message) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+// Source search (when no source selected)
+const sourceSearch = document.getElementById('sourceSearch');
+if (sourceSearch) {
+    let sourceTimeout;
+    sourceSearch.addEventListener('input', function() {
+        clearTimeout(sourceTimeout);
+        const query = this.value.trim();
+
+        if (query.length < 2) {
+            document.getElementById('searchResults').innerHTML = '';
+            return;
+        }
+
+        sourceTimeout = setTimeout(() => {
+            fetch(`/api/admin/search-questions?q=${encodeURIComponent(query)}`)
+            .then(r => r.json())
+            .then(results => {
+                const container = document.getElementById('searchResults');
+                if (results.length === 0) {
+                    container.innerHTML = '<p class="no-results">No questions found</p>';
+                    return;
+                }
+                container.innerHTML = results.map(q => `
+                    <a href="{{ url_for('admin_merge') }}?source=${q.id}" class="search-result-item">
+                        <div class="result-text">${q.canonical_text}</div>
+                        <div class="result-meta">
+                            <span>${q.cluster_name || 'No cluster'}</span>
+                            <span>${q.times_asked}x asked</span>
+                        </div>
+                    </a>
+                `).join('');
+            });
+        }, 300);
+    });
+}
+
+// Target search
+const targetSearch = document.getElementById('targetSearch');
+if (targetSearch) {
+    let targetTimeout;
+    targetSearch.addEventListener('input', function() {
+        clearTimeout(targetTimeout);
+        const query = this.value.trim();
+
+        if (query.length < 2) {
+            document.getElementById('targetResults').innerHTML = '';
+            return;
+        }
+
+        targetTimeout = setTimeout(() => {
+            fetch(`/api/admin/search-questions?q=${encodeURIComponent(query)}`)
+            .then(r => r.json())
+            .then(results => {
+                const container = document.getElementById('targetResults');
+                // Filter out source question
+                const sourceId = {{ source_question.id if source_question else 'null' }};
+                results = results.filter(q => q.id !== sourceId);
+
+                if (results.length === 0) {
+                    container.innerHTML = '<p class="no-results">No questions found</p>';
+                    return;
+                }
+                container.innerHTML = results.map(q => `
+                    <div class="search-result-item" onclick="selectTarget(${q.id})">
+                        <div class="result-text">${q.canonical_text}</div>
+                        <div class="result-meta">
+                            <span>${q.cluster_name || 'No cluster'}</span>
+                            <span>${q.times_asked}x asked</span>
+                        </div>
+                        <button class="btn btn-primary btn-sm">Select</button>
+                    </div>
+                `).join('');
+            });
+        }, 300);
+    });
+}
+
+function selectTarget(targetId) {
+    selectedTargetId = targetId;
+
+    // Show preview
+    const preview = document.getElementById('mergePreview');
+    preview.style.display = 'block';
+
+    const sourceData = {
+        id: {{ source_question.id if source_question else 'null' }},
+        times_asked: {{ source_question.times_asked if source_question else 0 }},
+        variants: {{ source_question.variants|length if source_question and source_question.variants else 0 }},
+        scripts: {{ source_question.scripts|length if source_question and source_question.scripts else 0 }}
+    };
+
+    document.getElementById('previewDetails').innerHTML = `
+        <li>Original canonical text as new variant</li>
+        <li>${sourceData.variants} additional variants from source</li>
+        <li>${sourceData.scripts} additional scripts from source</li>
+        <li>+${sourceData.times_asked} to times_asked counter</li>
+    `;
+
+    preview.scrollIntoView({behavior: 'smooth'});
+}
+
+function executeMerge() {
+    if (!selectedTargetId) {
+        showToast('Please select a target question');
+        return;
+    }
+
+    const sourceId = {{ source_question.id if source_question else 'null' }};
+    if (!confirm('Are you sure you want to merge these questions? This cannot be undone.')) return;
+
+    fetch('/api/admin/merge', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            source_id: sourceId,
+            target_id: selectedTargetId
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Questions merged successfully');
+            setTimeout(() => {
+                window.location.href = '{{ url_for("admin_moderation") }}';
+            }, 1500);
+        } else {
+            showToast('Error: ' + (data.message || 'Merge failed'));
+        }
+    });
+}
+</script>
+{% endblock %}

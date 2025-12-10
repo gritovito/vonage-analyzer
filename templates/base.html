@@ -20,6 +20,7 @@
             <li><a href="{{ url_for('documents') }}" class="{% if request.endpoint in ['documents', 'document_detail'] %}active{% endif %}">Documents</a></li>
             <li><a href="{{ url_for('upload') }}" class="{% if request.endpoint == 'upload' %}active{% endif %}">Upload</a></li>
             <li><a href="{{ url_for('analytics') }}" class="{% if request.endpoint == 'analytics' %}active{% endif %}">Analytics</a></li>
+            <li><a href="{{ url_for('admin_dashboard') }}" class="{% if request.endpoint and request.endpoint.startswith('admin') %}active{% endif %}">Admin</a></li>
         </ul>
     </nav>
 

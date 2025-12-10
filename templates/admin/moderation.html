@@ -1,0 +1,271 @@
+{% extends 'admin/base.html' %}
+
+{% set pending_count = counts.pending %}
+
+{% block title %}Moderation - Admin{% endblock %}
+
+{% block admin_content %}
+<div class="page-header">
+    <h1>Content Moderation</h1>
+</div>
+
+<!-- Status Tabs -->
+<div class="moderation-tabs">
+    <a href="{{ url_for('admin_moderation', status='pending') }}"
+       class="mod-tab {% if status_filter == 'pending' %}active{% endif %}">
+        Pending <span class="tab-count">{{ counts.pending }}</span>
+    </a>
+    <a href="{{ url_for('admin_moderation', status='approved') }}"
+       class="mod-tab {% if status_filter == 'approved' %}active{% endif %}">
+        Approved <span class="tab-count">{{ counts.approved }}</span>
+    </a>
+    <a href="{{ url_for('admin_moderation', status='rejected') }}"
+       class="mod-tab {% if status_filter == 'rejected' %}active{% endif %}">
+        Rejected <span class="tab-count">{{ counts.rejected }}</span>
+    </a>
+</div>
+
+<!-- Bulk Actions Bar -->
+<div class="bulk-actions-bar" id="bulkActionsBar" style="display: none;">
+    <span class="selected-count"><span id="selectedCount">0</span> selected</span>
+    <button class="btn btn-approve" onclick="bulkApprove()">Approve Selected</button>
+    <button class="btn btn-reject" onclick="bulkReject()">Reject Selected</button>
+    <button class="btn btn-danger" onclick="bulkDelete()">Delete Selected</button>
+    <button class="btn" onclick="clearSelection()">Clear Selection</button>
+</div>
+
+<!-- Questions List -->
+<div class="card">
+    <div class="card-header">
+        <h2>{{ status_filter|capitalize }} Questions ({{ total }})</h2>
+        <label class="select-all-label">
+            <input type="checkbox" id="selectAll" onchange="toggleSelectAll()"> Select All
+        </label>
+    </div>
+    <div class="card-body">
+        {% if questions %}
+        <div class="moderation-list">
+            {% for q in questions %}
+            <div class="moderation-item" data-id="{{ q.id }}">
+                <div class="mod-checkbox">
+                    <input type="checkbox" class="question-checkbox" value="{{ q.id }}" onchange="updateBulkBar()">
+                </div>
+                <div class="mod-content">
+                    <div class="mod-question-text">{{ q.canonical_text }}</div>
+                    <div class="mod-meta">
+                        <span class="cluster-tag" style="background-color: {{ q.cluster_color }}20; color: {{ q.cluster_color }}">
+                            {{ q.cluster_icon }} {{ q.cluster_name }}
+                        </span>
+                        {% if q.subcategory_name %}
+                        <span class="subcategory-tag">{{ q.subcategory_name }}</span>
+                        {% endif %}
+                        <span class="times-asked">{{ q.times_asked }}x asked</span>
+                        <span class="variant-count">{{ q.variant_count }} variants</span>
+                        <span class="script-count">{{ q.script_count }} scripts</span>
+                        {% if q.source_filename %}
+                        <span class="source-file">{{ q.source_filename }}</span>
+                        {% endif %}
+                    </div>
+                    {% if q.best_script_preview %}
+                    <div class="mod-script-preview">
+                        <strong>Best Script:</strong> {{ q.best_script_preview|truncate_text(150) }}
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="mod-actions">
+                    {% if status_filter != 'approved' %}
+                    <button class="btn btn-approve btn-sm" onclick="approveQuestion({{ q.id }})">Approve</button>
+                    {% endif %}
+                    {% if status_filter != 'rejected' %}
+                    <button class="btn btn-reject btn-sm" onclick="rejectQuestion({{ q.id }})">Reject</button>
+                    {% endif %}
+                    {% if status_filter != 'pending' %}
+                    <button class="btn btn-sm" onclick="pendingQuestion({{ q.id }})">To Pending</button>
+                    {% endif %}
+                    <a href="{{ url_for('admin_question_edit', question_id=q.id) }}" class="btn btn-sm">Edit</a>
+                    <a href="{{ url_for('admin_merge', source=q.id) }}" class="btn btn-sm">Merge</a>
+                    <button class="btn btn-danger btn-sm" onclick="deleteQuestion({{ q.id }})">Delete</button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Pagination -->
+        {% if total_pages > 1 %}
+        <div class="pagination">
+            {% if page > 1 %}
+            <a href="{{ url_for('admin_moderation', status=status_filter, page=page-1) }}" class="btn">Previous</a>
+            {% endif %}
+            <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
+            {% if page < total_pages %}
+            <a href="{{ url_for('admin_moderation', status=status_filter, page=page+1) }}" class="btn">Next</a>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="empty-state">
+            <h3>No {{ status_filter }} questions</h3>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+function showToast(message) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+function getSelectedIds() {
+    return Array.from(document.querySelectorAll('.question-checkbox:checked')).map(cb => parseInt(cb.value));
+}
+
+function updateBulkBar() {
+    const selected = getSelectedIds();
+    const bar = document.getElementById('bulkActionsBar');
+    const count = document.getElementById('selectedCount');
+
+    if (selected.length > 0) {
+        bar.style.display = 'flex';
+        count.textContent = selected.length;
+    } else {
+        bar.style.display = 'none';
+    }
+}
+
+function toggleSelectAll() {
+    const selectAll = document.getElementById('selectAll');
+    document.querySelectorAll('.question-checkbox').forEach(cb => {
+        cb.checked = selectAll.checked;
+    });
+    updateBulkBar();
+}
+
+function clearSelection() {
+    document.querySelectorAll('.question-checkbox').forEach(cb => cb.checked = false);
+    document.getElementById('selectAll').checked = false;
+    updateBulkBar();
+}
+
+function approveQuestion(id) {
+    fetch(`/api/admin/question/${id}/approve`, {method: 'POST', headers: {'Content-Type': 'application/json'}})
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Question approved');
+            document.querySelector(`[data-id="${id}"]`).remove();
+        }
+    });
+}
+
+function rejectQuestion(id) {
+    const reason = prompt('Reason for rejection (optional):');
+    fetch(`/api/admin/question/${id}/reject`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({reason: reason || ''})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Question rejected');
+            document.querySelector(`[data-id="${id}"]`).remove();
+        }
+    });
+}
+
+function pendingQuestion(id) {
+    fetch(`/api/admin/question/${id}/pending`, {method: 'POST', headers: {'Content-Type': 'application/json'}})
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Question set to pending');
+            document.querySelector(`[data-id="${id}"]`).remove();
+        }
+    });
+}
+
+function deleteQuestion(id) {
+    if (!confirm('Are you sure you want to delete this question? This will also delete all variants and scripts.')) return;
+
+    const reason = prompt('Reason for deletion (optional):');
+    fetch(`/api/admin/question/${id}/delete`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({reason: reason || ''})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showToast('Question deleted');
+            document.querySelector(`[data-id="${id}"]`).remove();
+        }
+    });
+}
+
+function bulkApprove() {
+    const ids = getSelectedIds();
+    if (!ids.length) return;
+    if (!confirm(`Approve ${ids.length} questions?`)) return;
+
+    fetch('/api/admin/questions/bulk', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({question_ids: ids, action: 'approve'})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showToast(`${data.count} questions approved`);
+            location.reload();
+        }
+    });
+}
+
+function bulkReject() {
+    const ids = getSelectedIds();
+    if (!ids.length) return;
+
+    const reason = prompt('Reason for rejection (optional):');
+    if (!confirm(`Reject ${ids.length} questions?`)) return;
+
+    fetch('/api/admin/questions/bulk', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({question_ids: ids, action: 'reject', reason: reason || ''})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showToast(`${data.count} questions rejected`);
+            location.reload();
+        }
+    });
+}
+
+function bulkDelete() {
+    const ids = getSelectedIds();
+    if (!ids.length) return;
+    if (!confirm(`DELETE ${ids.length} questions? This cannot be undone!`)) return;
+
+    const reason = prompt('Reason for deletion (optional):');
+
+    fetch('/api/admin/questions/bulk', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({question_ids: ids, action: 'delete', reason: reason || ''})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showToast(`${data.count} questions deleted`);
+            location.reload();
+        }
+    });
+}
+</script>
+{% endblock %}

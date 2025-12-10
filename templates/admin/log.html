@@ -1,0 +1,114 @@
+{% extends 'admin/base.html' %}
+
+{% block title %}Activity Log - Admin{% endblock %}
+
+{% block admin_content %}
+<div class="page-header">
+    <h1>Moderation Activity Log</h1>
+    {% if question_id %}
+    <a href="{{ url_for('admin_log') }}" class="btn">View All Activity</a>
+    {% endif %}
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>
+            {% if question_id %}
+            Activity for Question #{{ question_id }}
+            {% else %}
+            All Activity
+            {% endif %}
+            ({{ total }} entries)
+        </h2>
+    </div>
+    <div class="card-body">
+        {% if log_entries %}
+        <div class="log-table-container">
+            <table class="table log-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Action</th>
+                        <th>Question</th>
+                        <th>Details</th>
+                        <th>Admin</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in log_entries %}
+                    <tr>
+                        <td class="log-time">{{ log.created_at|datetime }}</td>
+                        <td>
+                            {% if 'approved' in log.action %}
+                            <span class="action-badge approved">Approved</span>
+                            {% elif 'rejected' in log.action %}
+                            <span class="action-badge rejected">Rejected</span>
+                            {% elif 'deleted' in log.action %}
+                            <span class="action-badge deleted">Deleted</span>
+                            {% elif 'merged' in log.action %}
+                            <span class="action-badge merged">Merged</span>
+                            {% elif 'edited' in log.action %}
+                            <span class="action-badge edited">Edited</span>
+                            {% elif 'script' in log.action %}
+                            <span class="action-badge script">Script</span>
+                            {% elif 'variant' in log.action %}
+                            <span class="action-badge variant">Variant</span>
+                            {% elif 'cluster' in log.action %}
+                            <span class="action-badge cluster">Category</span>
+                            {% else %}
+                            <span class="action-badge">{{ log.action|replace('_', ' ')|title }}</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if log.question_text %}
+                            <a href="{{ url_for('admin_question_edit', question_id=log.question_id) }}" class="log-question-link">
+                                {{ log.question_text|truncate_text(50) }}
+                            </a>
+                            {% elif log.question_id %}
+                            <span class="deleted-ref">#{{ log.question_id }} (deleted)</span>
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td class="log-details">
+                            {% if log.reason %}
+                            <div class="log-reason">Reason: {{ log.reason }}</div>
+                            {% endif %}
+                            {% if log.old_value and log.new_value %}
+                            <div class="log-change">
+                                <span class="old-value">{{ log.old_value|truncate_text(30) }}</span>
+                                <span class="arrow">-></span>
+                                <span class="new-value">{{ log.new_value|truncate_text(30) }}</span>
+                            </div>
+                            {% elif log.old_value %}
+                            <div class="log-old">Was: {{ log.old_value|truncate_text(50) }}</div>
+                            {% endif %}
+                        </td>
+                        <td class="log-admin">{{ log.admin_user }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Pagination -->
+        {% if total_pages > 1 %}
+        <div class="pagination">
+            {% if page > 1 %}
+            <a href="{{ url_for('admin_log', page=page-1, question_id=question_id) }}" class="btn">Previous</a>
+            {% endif %}
+            <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
+            {% if page < total_pages %}
+            <a href="{{ url_for('admin_log', page=page+1, question_id=question_id) }}" class="btn">Next</a>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="empty-state">
+            <h3>No activity recorded</h3>
+            <p>Moderation actions will appear here</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
